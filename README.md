@@ -4,7 +4,7 @@ A plugin for [Obsidian](https://obsidian.md) which allows editing of qmd files a
 
 QMD files contain a combination of markdown and executable code cell, and are format supported by [Quarto](https://quarto.org/) open source publishing systems, they are supported in Rstudio and VSCode editors.
 
-To be able to use  linking with  the quatro files you need to check the toggle "detect all files extension" in `Files & Links` section in Obsidian.
+To be able to use linking with the quatro files you need to check the toggle "detect all files extension" in `Files & Links` section in Obsidian.
 
 To hide additional files you might use this CSS chunk (save it as a file to your snippets folder and enable it in Obsidian in the Appeareance menu), you might add aditional filetypes.
 
@@ -37,7 +37,7 @@ Plugin is a small tweak of a plugin made by deathau: [deathau/txt-as-md-obsidian
 ### To-do
 
 - [ ] Creation of new qmd files
-- [ ] Currly braces `{language}` treated as language for codeblock
+- [ ] Curly braces `{language}` treated as language for codeblock
 - [ ] CSS for callout blocks
 - [ ] Better integration with Obsidian
 
@@ -48,7 +48,7 @@ The required APIs were only added in Obsidian **0.10.12**, and as such, that is 
 ## Installation
 
 ### From within Obsidian
-Currently the plugin is not accesible in the Obsidian n the community list. Tho access and beta test it, you can use [the BRAT plugin](https://github.com/TfTHacker/obsidian42-brat).
+Currently the plugin is not accesible in the Obsidian community list. To access and beta test it, you can use [the BRAT plugin](https://github.com/TfTHacker/obsidian42-brat).
 
 ### From GitHub
 - Download the Latest Release from the Releases section of the GitHub Repository
