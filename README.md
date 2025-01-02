@@ -99,3 +99,5 @@ Plugin is completely free, but you might contribute to the author of the orginal
 Initial release by death_md supporting txt!
 ## 0.0.2
 Repurposing this plugin to viev and edit qmd files, plugin available via BRAT.
+# 0.0.3 
+Optopn to run preview

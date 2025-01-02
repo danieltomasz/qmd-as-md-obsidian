@@ -6,7 +6,6 @@ import {
   PluginSettingTab,
   App,
   Setting,
-  TAbstractFile,
 } from 'obsidian';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
@@ -14,11 +13,13 @@ import * as path from 'path';
 interface QmdPluginSettings {
   quartoPath: string;
   enableQmdLinking: boolean;
+  quartoTypst: string; // Add Quarto Typst variable
 }
 
 const DEFAULT_SETTINGS: QmdPluginSettings = {
   quartoPath: 'quarto',
   enableQmdLinking: true,
+  quartoTypst: '', // Default is empty
 };
 
 export default class QmdAsMdPlugin extends Plugin {
@@ -38,7 +39,7 @@ export default class QmdAsMdPlugin extends Plugin {
       this.addSettingTab(new QmdSettingTab(this.app, this));
       console.log('Settings tab added successfully');
 
-      this.addRibbonIcon('eye', 'Toggle Quarto Preview', async (evt) => {
+      this.addRibbonIcon('eye', 'Toggle Quarto Preview', async () => {
         const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (activeView?.file && this.isQuartoFile(activeView.file)) {
           console.log(`Toggling preview for: ${activeView.file.path}`);
@@ -122,13 +123,25 @@ export default class QmdAsMdPlugin extends Plugin {
       console.log(`Resolved file path: ${filePath}`);
       console.log(`Working directory: ${workingDir}`);
 
-      const process = spawn(this.settings.quartoPath, ['preview', filePath], {
+      const envVars: NodeJS.ProcessEnv = {
+        ...process.env, // inherit the existing environment
+      };
+
+      if (this.settings.quartoTypst.trim()) {
+        envVars.QUARTO_TYPST = this.settings.quartoTypst.trim();
+        console.log(`QUARTO_TYPST set to: ${envVars.QUARTO_TYPST}`);
+      } else {
+        console.log('QUARTO_TYPST not set (empty).');
+      }
+
+      const quartoProcess = spawn(this.settings.quartoPath, ['preview', filePath], {
         cwd: workingDir,
+        env: envVars,
       });
 
       let previewUrl: string | null = null;
 
-      process.stdout?.on('data', (data: Buffer) => {
+      quartoProcess.stdout?.on('data', (data: Buffer) => {
         const output = data.toString();
         console.log(`Quarto Preview Output: ${output}`);
 
@@ -151,19 +164,19 @@ export default class QmdAsMdPlugin extends Plugin {
         }
       });
 
-      process.stderr?.on('data', (data: Buffer) => {
+      quartoProcess.stderr?.on('data', (data: Buffer) => {
         console.error(`Quarto Preview Error: ${data}`);
         new Notice(`Quarto Preview Error: ${data}`);
       });
 
-      process.on('close', (code: number | null) => {
+      quartoProcess.on('close', (code: number | null) => {
         if (code !== null && code !== 0) {
           new Notice(`Quarto preview process exited with code ${code}`);
         }
         this.activePreviewProcesses.delete(file.path);
       });
 
-      this.activePreviewProcesses.set(file.path, process);
+      this.activePreviewProcesses.set(file.path, quartoProcess);
       new Notice('Quarto preview started');
     } catch (error) {
       console.error('Failed to start Quarto preview:', error);
@@ -172,10 +185,10 @@ export default class QmdAsMdPlugin extends Plugin {
   }
 
   async stopPreview(file: TFile) {
-    const process = this.activePreviewProcesses.get(file.path);
-    if (process) {
-      if (!process.killed) {
-        process.kill();
+    const quartoProcess = this.activePreviewProcesses.get(file.path);
+    if (quartoProcess) {
+      if (!quartoProcess.killed) {
+        quartoProcess.kill();
       }
       this.activePreviewProcesses.delete(file.path);
       new Notice('Quarto preview stopped');
@@ -183,9 +196,9 @@ export default class QmdAsMdPlugin extends Plugin {
   }
 
   stopAllPreviews() {
-    this.activePreviewProcesses.forEach((process, filePath) => {
-      if (!process.killed) {
-        process.kill();
+    this.activePreviewProcesses.forEach((quartoProcess, filePath) => {
+      if (!quartoProcess.killed) {
+        quartoProcess.kill();
       }
       this.activePreviewProcesses.delete(filePath);
     });
@@ -245,6 +258,20 @@ class QmdSettingTab extends PluginSettingTab {
               );
             }
 
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('QUARTO_TYPST Variable')
+      .setDesc('Define the QUARTO_TYPST environment variable (leave empty to unset)')
+      .addText((text) =>
+        text
+          .setPlaceholder('e.g., typst_path')
+          .setValue(this.plugin.settings.quartoTypst)
+          .onChange(async (value) => {
+            console.log(`QUARTO_TYPST set to: ${value}`);
+            this.plugin.settings.quartoTypst = value;
             await this.plugin.saveSettings();
           })
       );
