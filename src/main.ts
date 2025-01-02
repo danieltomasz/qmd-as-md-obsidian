@@ -13,13 +13,11 @@ import * as path from 'path';
 
 interface QmdPluginSettings {
   quartoPath: string;
-  autoPreview: boolean;
   enableQmdLinking: boolean;
 }
 
 const DEFAULT_SETTINGS: QmdPluginSettings = {
   quartoPath: 'quarto',
-  autoPreview: false,
   enableQmdLinking: true,
 };
 
@@ -140,8 +138,6 @@ export default class QmdAsMdPlugin extends Plugin {
             previewUrl = match[1];
             new Notice(`Preview available at ${previewUrl}`);
 
-            // Open the preview in a new tab
-            // Open the preview in a new tab
             const leaf = this.app.workspace.getLeaf('tab');
             leaf.setViewState({
               type: 'webviewer',
@@ -150,7 +146,6 @@ export default class QmdAsMdPlugin extends Plugin {
                 url: previewUrl,
               },
             });
-            // Reveal the tab
             this.app.workspace.revealLeaf(leaf);
           }
         }
@@ -226,19 +221,6 @@ class QmdSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             console.log(`Quarto path changed to: ${value}`);
             this.plugin.settings.quartoPath = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName('Auto Preview')
-      .setDesc('Automatically start preview when opening Quarto files')
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.autoPreview)
-          .onChange(async (value) => {
-            console.log(`Auto-preview setting changed to: ${value}`);
-            this.plugin.settings.autoPreview = value;
             await this.plugin.saveSettings();
           })
       );
