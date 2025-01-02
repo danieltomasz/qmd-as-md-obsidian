@@ -4,7 +4,13 @@ A plugin for [Obsidian](https://obsidian.md) that allows seamless editing of QMD
 
 QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. These files are compatible with editors like RStudio and VSCode.
 
-This plugin began as a small tweak to a now-defunct plugin created by deathau: [deathau/txt-as-md-obsidian](https://github.com/deathau/txt-as-md-obsidian). It has since evolved with additional integrations.
+This plugin originated in 2022 as a minimal change to a now-archived project by deathau: [deathau/txt-as-md-obsidian](https://github.com/deathau/txt-as-md-obsidian).  It has since evolved to include additional integrations and features.
+
+As of the end of 2024, there are also other plugins  exist that make it easier to work with Obsidian and Quarto:
+
+- [Ridian](https://github.com/MichelNivard/Ridian) offers R code block execution and variable previews.  
+- [Quarto Exporter](https://github.com/AndreasThinks/obsidian-to-quarto-exporter) helps export Obsidian Markdown files into the QMD format.  
+
 
 ---
 
@@ -24,14 +30,17 @@ This plugin began as a small tweak to a now-defunct plugin created by deathau: [
 
 ## To-Do List
 
+- [ ] Use Obsidian 1.8’s web preview to enable seamless in-app previews.
 - [ ] Recognize `{language}` for code block syntax highlighting.
 - [ ] Add CSS support for callout blocks.
 - [ ] Enable the creation of new QMD files.
 - [ ] Add a render command.
 
+
 ---
 
 ## Enhancing Quarto File Integration in Obsidian
+
 
 To enable linking with Quarto files, ensure the **"Detect all file extensions"** toggle is activated in the `Files & Links` section of Obsidian settings.
 
