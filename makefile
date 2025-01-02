@@ -2,7 +2,7 @@ zip:
 	zip qmd-as-md.zip main.js manifest.json
 
 clean:
-	rm -rf node_modules dist build .cache *.log *.tmp package-lock.json main.js
+	rm -rf node_modules dist build .cache *.log *.tmp package-lock.json 
 
 build:
 	npm install && npm run build && make zip && make clean

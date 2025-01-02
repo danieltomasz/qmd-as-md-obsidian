@@ -13,13 +13,15 @@ import * as path from 'path';
 interface QmdPluginSettings {
   quartoPath: string;
   enableQmdLinking: boolean;
-  quartoTypst: string; // Add Quarto Typst variable
+  quartoTypst: string;
+  emitCompilationLogs: boolean; // New setting
 }
 
 const DEFAULT_SETTINGS: QmdPluginSettings = {
   quartoPath: 'quarto',
   enableQmdLinking: true,
-  quartoTypst: '', // Default is empty
+  quartoTypst: '',
+  emitCompilationLogs: true, // Default is to emit logs
 };
 
 export default class QmdAsMdPlugin extends Plugin {
@@ -124,14 +126,12 @@ export default class QmdAsMdPlugin extends Plugin {
       console.log(`Working directory: ${workingDir}`);
 
       const envVars: NodeJS.ProcessEnv = {
-        ...process.env, // inherit the existing environment
+        ...process.env,
       };
 
       if (this.settings.quartoTypst.trim()) {
         envVars.QUARTO_TYPST = this.settings.quartoTypst.trim();
         console.log(`QUARTO_TYPST set to: ${envVars.QUARTO_TYPST}`);
-      } else {
-        console.log('QUARTO_TYPST not set (empty).');
       }
 
       const quartoProcess = spawn(this.settings.quartoPath, ['preview', filePath], {
@@ -143,7 +143,9 @@ export default class QmdAsMdPlugin extends Plugin {
 
       quartoProcess.stdout?.on('data', (data: Buffer) => {
         const output = data.toString();
-        console.log(`Quarto Preview Output: ${output}`);
+        if (this.settings.emitCompilationLogs) {
+          console.log(`Quarto Preview Output: ${output}`);
+        }
 
         if (output.includes('Browse at')) {
           const match = output.match(/Browse at\s+(http:\/\/[^\s]+)/);
@@ -165,8 +167,9 @@ export default class QmdAsMdPlugin extends Plugin {
       });
 
       quartoProcess.stderr?.on('data', (data: Buffer) => {
-        console.error(`Quarto Preview Error: ${data}`);
-        new Notice(`Quarto Preview Error: ${data}`);
+        if (this.settings.emitCompilationLogs) {
+          console.error(`Quarto Preview Error: ${data}`);
+        }
       });
 
       quartoProcess.on('close', (code: number | null) => {
@@ -239,26 +242,20 @@ class QmdSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Enable Linking to Quarto Files')
+      .setName('Enable Editing Quarto Files')
       .setDesc(
-        'Allow linking to `.qmd` files without enabling "Detect All File Extensions"'
+        'By default it allows editing `.qmd` files, disable it case of conflict with `Custom File Extensionbs and Types` plugin'
       )
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.enableQmdLinking)
           .onChange(async (value) => {
-            console.log(`Enable QMD Linking setting changed to: ${value}`);
+            console.log(`Enable QMD Editing setting changed to: ${value}`);
             this.plugin.settings.enableQmdLinking = value;
 
             if (value) {
               this.plugin.registerQmdExtension();
-            } else {
-              console.log(
-                '.qmd linking disabled. Restart Obsidian if required.'
-              );
             }
-
-            await this.plugin.saveSettings();
           })
       );
 
@@ -272,6 +269,19 @@ class QmdSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             console.log(`QUARTO_TYPST set to: ${value}`);
             this.plugin.settings.quartoTypst = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Emit Compilation Logs')
+      .setDesc('Toggle whether to emit detailed compilation logs in the console')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.emitCompilationLogs)
+          .onChange(async (value) => {
+            console.log(`Emit Compilation Logs set to: ${value}`);
+            this.plugin.settings.emitCompilationLogs = value;
             await this.plugin.saveSettings();
           })
       );
