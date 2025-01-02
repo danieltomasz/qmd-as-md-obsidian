@@ -20,7 +20,7 @@ interface QmdPluginSettings {
 const DEFAULT_SETTINGS: QmdPluginSettings = {
   quartoPath: 'quarto',
   autoPreview: false,
-  enableQmdLinking: false,
+  enableQmdLinking: true,
 };
 
 export default class QmdAsMdPlugin extends Plugin {
@@ -139,6 +139,19 @@ export default class QmdAsMdPlugin extends Plugin {
           if (match && match[1]) {
             previewUrl = match[1];
             new Notice(`Preview available at ${previewUrl}`);
+
+            // Open the preview in a new tab
+            // Open the preview in a new tab
+            const leaf = this.app.workspace.getLeaf('tab');
+            leaf.setViewState({
+              type: 'webviewer',
+              active: true,
+              state: {
+                url: previewUrl,
+              },
+            });
+            // Reveal the tab
+            this.app.workspace.revealLeaf(leaf);
           }
         }
       });
