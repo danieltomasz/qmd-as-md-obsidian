@@ -6,7 +6,8 @@ import {
   PluginSettingTab,
   App,
   Setting,
-  TAbstractFile,
+  WorkspaceLeaf,
+  Platform,
 } from 'obsidian';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
@@ -15,41 +16,39 @@ interface QmdPluginSettings {
   quartoPath: string;
   autoPreview: boolean;
   enableQmdLinking: boolean;
+  useWebViewer: boolean;
 }
 
 const DEFAULT_SETTINGS: QmdPluginSettings = {
   quartoPath: 'quarto',
   autoPreview: false,
   enableQmdLinking: false,
+  useWebViewer: true,
 };
 
 export default class QmdAsMdPlugin extends Plugin {
   settings: QmdPluginSettings;
   activePreviewProcesses: Map<string, ChildProcess> = new Map();
+  activeWebViewers: Map<string, WorkspaceLeaf> = new Map();
 
   async onload() {
-    console.log('Plugin is loading...');
     try {
       await this.loadSettings();
-      console.log('Settings loaded:', this.settings);
 
       if (this.settings.enableQmdLinking) {
         this.registerQmdExtension();
       }
 
       this.addSettingTab(new QmdSettingTab(this.app, this));
-      console.log('Settings tab added successfully');
 
-      this.addRibbonIcon('eye', 'Toggle Quarto Preview', async (evt) => {
+      this.addRibbonIcon('eye', 'Toggle Quarto Preview', async () => {
         const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (activeView?.file && this.isQuartoFile(activeView.file)) {
-          console.log(`Toggling preview for: ${activeView.file.path}`);
           await this.togglePreview(activeView.file);
         } else {
           new Notice('Current file is not a Quarto document');
         }
       });
-      console.log('Ribbon icon added');
 
       this.addCommand({
         id: 'toggle-quarto-preview',
@@ -57,27 +56,32 @@ export default class QmdAsMdPlugin extends Plugin {
         callback: async () => {
           const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
           if (activeView?.file && this.isQuartoFile(activeView.file)) {
-            console.log(`Command: Toggling preview for ${activeView.file.path}`);
             await this.togglePreview(activeView.file);
           } else {
             new Notice('Current file is not a Quarto document');
           }
         },
-        hotkeys: [{ modifiers: ['Ctrl', 'Shift'], key: 'p' }],
       });
 
-      console.log('Commands added');
+      if (this.settings.autoPreview) {
+        this.registerEvent(
+          this.app.workspace.on('file-open', async (file) => {
+            if (file && this.isQuartoFile(file)) {
+              await this.togglePreview(file);
+            }
+          })
+        );
+      }
     } catch (error) {
       console.error('Error loading plugin:', error);
-      new Notice(
-        'Failed to load QmdAsMdPlugin. Check the developer console for details.'
-      );
+      new Notice('Failed to load QmdAsMdPlugin.');
     }
   }
 
   onunload() {
-    console.log('Plugin is unloading...');
     this.stopAllPreviews();
+    this.activeWebViewers.forEach((leaf) => leaf.detach());
+    this.activeWebViewers.clear();
   }
 
   async loadSettings() {
@@ -93,12 +97,89 @@ export default class QmdAsMdPlugin extends Plugin {
   }
 
   registerQmdExtension() {
-    console.log('Registering .qmd as markdown...');
     this.registerExtensions(['qmd'], 'markdown');
-    console.log('.qmd registered as markdown');
   }
 
   async togglePreview(file: TFile) {
+    if (this.settings.useWebViewer && !Platform.isMobile) {
+      await this.toggleWebViewer(file);
+    } else {
+      await this.toggleExternalPreview(file);
+    }
+  }
+
+  async toggleWebViewer(file: TFile) {
+    const existingViewer = this.activeWebViewers.get(file.path);
+    if (existingViewer) {
+      existingViewer.detach();
+      this.activeWebViewers.delete(file.path);
+      await this.stopPreview(file);
+    } else {
+      const previewUrl = await this.startPreviewAndGetUrl(file);
+      if (previewUrl) {
+        const leaf = this.app.workspace.getRightLeaf(false);
+        if (!leaf) {
+          new Notice('Failed to create preview pane');
+          return;
+        }
+        await leaf.setViewState({
+          type: 'webview',
+          state: { url: previewUrl },
+        });
+        this.activeWebViewers.set(file.path, leaf);
+        this.app.workspace.setActiveLeaf(leaf, false, true);
+      }
+    }
+  }
+
+  async startPreviewAndGetUrl(file: TFile): Promise<string | null> {
+    return new Promise((resolve) => {
+      const filePath = (this.app.vault.adapter as any).getFullPath(file.path);
+      const workingDir = path.dirname(filePath);
+
+      const process = spawn(this.settings.quartoPath, ['preview', filePath], { cwd: workingDir });
+      let timeoutId: NodeJS.Timeout;
+
+      const cleanup = () => {
+        clearTimeout(timeoutId);
+        process.removeAllListeners();
+      };
+
+      timeoutId = setTimeout(() => {
+        cleanup();
+        resolve(null);
+        new Notice('Preview startup timed out');
+      }, 10000);
+
+      process.stdout?.on('data', (data: Buffer) => {
+        const output = data.toString();
+        if (output.includes('Browse at')) {
+          const match = output.match(/Browse at\s+(http:\/\/[^\s]+)/);
+          if (match && match[1]) {
+            cleanup();
+            resolve(match[1]);
+          }
+        }
+      });
+
+      process.stderr?.on('data', (data: Buffer) => {
+        console.error(`Quarto Preview Error: ${data}`);
+      });
+
+      process.on('error', () => {
+        cleanup();
+        resolve(null);
+      });
+
+      process.on('close', () => {
+        this.activePreviewProcesses.delete(file.path);
+      });
+
+      this.activePreviewProcesses.set(file.path, process);
+    });
+  }
+
+  async toggleExternalPreview(file: TFile) {
     if (this.activePreviewProcesses.has(file.path)) {
       await this.stopPreview(file);
     } else {
@@ -108,59 +189,19 @@ export default class QmdAsMdPlugin extends Plugin {
 
   async startPreview(file: TFile) {
     if (this.activePreviewProcesses.has(file.path)) {
-      console.log(`Preview already running for: ${file.path}`);
-      return; // Preview already running
+      return;
     }
 
-    try {
-      const abstractFile = this.app.vault.getAbstractFileByPath(file.path);
-      if (!abstractFile || !(abstractFile instanceof TFile)) {
-        new Notice(`File ${file.path} not found`);
-        return;
-      }
-      const filePath = (this.app.vault.adapter as any).getFullPath(abstractFile.path);
-      const workingDir = path.dirname(filePath);
+    const filePath = (this.app.vault.adapter as any).getFullPath(file.path);
+    const workingDir = path.dirname(filePath);
 
-      console.log(`Resolved file path: ${filePath}`);
-      console.log(`Working directory: ${workingDir}`);
+    const process = spawn(this.settings.quartoPath, ['preview', filePath], { cwd: workingDir });
 
-      const process = spawn(this.settings.quartoPath, ['preview', filePath], {
-        cwd: workingDir,
-      });
+    process.on('close', () => {
+      this.activePreviewProcesses.delete(file.path);
+    });
 
-      let previewUrl: string | null = null;
-
-      process.stdout?.on('data', (data: Buffer) => {
-        const output = data.toString();
-        console.log(`Quarto Preview Output: ${output}`);
-
-        if (output.includes('Browse at')) {
-          const match = output.match(/Browse at\s+(http:\/\/[^\s]+)/);
-          if (match && match[1]) {
-            previewUrl = match[1];
-            new Notice(`Preview available at ${previewUrl}`);
-          }
-        }
-      });
-
-      process.stderr?.on('data', (data: Buffer) => {
-        console.error(`Quarto Preview Error: ${data}`);
-        new Notice(`Quarto Preview Error: ${data}`);
-      });
-
-      process.on('close', (code: number | null) => {
-        if (code !== null && code !== 0) {
-          new Notice(`Quarto preview process exited with code ${code}`);
-        }
-        this.activePreviewProcesses.delete(file.path);
-      });
-
-      this.activePreviewProcesses.set(file.path, process);
-      new Notice('Quarto preview started');
-    } catch (error) {
-      console.error('Failed to start Quarto preview:', error);
-      new Notice('Failed to start Quarto preview');
-    }
+    this.activePreviewProcesses.set(file.path, process);
   }
 
   async stopPreview(file: TFile) {
@@ -170,20 +211,16 @@ export default class QmdAsMdPlugin extends Plugin {
         process.kill();
       }
       this.activePreviewProcesses.delete(file.path);
-      new Notice('Quarto preview stopped');
     }
   }
 
   stopAllPreviews() {
-    this.activePreviewProcesses.forEach((process, filePath) => {
+    this.activePreviewProcesses.forEach((process) => {
       if (!process.killed) {
         process.kill();
       }
-      this.activePreviewProcesses.delete(filePath);
     });
-    if (this.activePreviewProcesses.size > 0) {
-      new Notice('All Quarto previews stopped');
-    }
+    this.activePreviewProcesses.clear();
   }
 }
 
@@ -199,61 +236,45 @@ class QmdSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    console.log('Rendering settings tab...');
-
     containerEl.createEl('h2', { text: 'Quarto Preview Settings' });
 
     new Setting(containerEl)
       .setName('Quarto Path')
-      .setDesc('Path to Quarto executable (e.g., quarto, /usr/local/bin/quarto)')
       .addText((text) =>
-        text
-          .setPlaceholder('quarto')
-          .setValue(this.plugin.settings.quartoPath)
-          .onChange(async (value) => {
-            console.log(`Quarto path changed to: ${value}`);
-            this.plugin.settings.quartoPath = value;
-            await this.plugin.saveSettings();
-          })
+        text.setValue(this.plugin.settings.quartoPath).onChange(async (value) => {
+          this.plugin.settings.quartoPath = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName('Use WebViewer')
+      .addToggle((toggle) =>
+        toggle.setValue(this.plugin.settings.useWebViewer).onChange(async (value) => {
+          this.plugin.settings.useWebViewer = value;
+          await this.plugin.saveSettings();
+        })
       );
 
     new Setting(containerEl)
       .setName('Auto Preview')
-      .setDesc('Automatically start preview when opening Quarto files')
       .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.autoPreview)
-          .onChange(async (value) => {
-            console.log(`Auto-preview setting changed to: ${value}`);
-            this.plugin.settings.autoPreview = value;
-            await this.plugin.saveSettings();
-          })
+        toggle.setValue(this.plugin.settings.autoPreview).onChange(async (value) => {
+          this.plugin.settings.autoPreview = value;
+          await this.plugin.saveSettings();
+        })
       );
 
     new Setting(containerEl)
       .setName('Enable Linking to Quarto Files')
-      .setDesc(
-        'Allow linking to `.qmd` files without enabling "Detect All File Extensions"'
-      )
       .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.enableQmdLinking)
-          .onChange(async (value) => {
-            console.log(`Enable QMD Linking setting changed to: ${value}`);
-            this.plugin.settings.enableQmdLinking = value;
-
-            if (value) {
-              this.plugin.registerQmdExtension();
-            } else {
-              console.log(
-                '.qmd linking disabled. Restart Obsidian if required.'
-              );
-            }
-
-            await this.plugin.saveSettings();
-          })
+        toggle.setValue(this.plugin.settings.enableQmdLinking).onChange(async (value) => {
+          this.plugin.settings.enableQmdLinking = value;
+          if (value) {
+            this.plugin.registerQmdExtension();
+          }
+          await this.plugin.saveSettings();
+        })
       );
-
-    console.log('Settings tab rendered successfully');
   }
 }
