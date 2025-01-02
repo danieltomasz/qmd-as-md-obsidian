@@ -11,6 +11,7 @@ As of the end of 2024, there are also other plugins  exist that make it easier t
 - [Ridian](https://github.com/MichelNivard/Ridian) offers R code block execution and variable previews.  
 - [Quarto Exporter](https://github.com/AndreasThinks/obsidian-to-quarto-exporter) helps export Obsidian Markdown files into the QMD format.  
 
+The main difference between this plugin and these other plugins is that this plugin allows you to compile QMD files as they are, without exporting them to another folder. In this regard, it is more similar to the Pandoc plugin.
 
 ---
 
