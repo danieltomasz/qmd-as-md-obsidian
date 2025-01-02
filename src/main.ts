@@ -244,7 +244,7 @@ class QmdSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('Enable Editing Quarto Files')
       .setDesc(
-        'By default it allows editing `.qmd` files, disable it case of conflict with `Custom File Extensionbs and Types` plugin'
+        'By default, plugin allows editing .qmd files. Disable this feature if there is a conflict with .qmd editing enabled by another plugin'
       )
       .addToggle((toggle) =>
         toggle
