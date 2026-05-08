@@ -17,6 +17,13 @@ The main difference between this plugin and these other plugins is that this plu
 
 ## Version History
 
+### 0.1.0-rc.1 (beta — BRAT only)
+- Added **Render Quarto to PDF** command and ribbon icon. Runs `quarto render <file> --to pdf` on the active `.qmd` file.
+- Added **"Open Compiled PDF in Obsidian"** setting toggle. When enabled, the rendered PDF opens inside Obsidian using the built-in PDF viewer.
+- PDF opens in a vertical split to the right of the source `.qmd`, so the source tab is no longer replaced.
+- Re-running the render reuses the existing PDF tab (reloads the file in place) instead of stacking new tabs.
+- Command exposes a `file-output` icon, so plugins like **Commander** can pin it to the toolbar.
+
 ### 0.0.3
 - Added an option to run Quarto preview for the current `qmd` file.
 
@@ -35,8 +42,22 @@ The main difference between this plugin and these other plugins is that this plu
 - [ ] Recognize `{language}` for code block syntax highlighting.
 - [ ] Add CSS support for callout blocks.
 - [ ] Enable the creation of new QMD files.
-- [ ] Add a render command.
+- [x] Add a render command. *(0.1.0-rc.1 — render to PDF, open inside Obsidian.)*
 
+
+---
+
+## Rendering to PDF (beta)
+
+Available from **0.1.0-rc.1** via BRAT.
+
+- Command: **Render Quarto to PDF** (palette + ribbon icon `file-output`). Runs `quarto render <file> --to pdf` on the active `.qmd`.
+- Setting **Open Compiled PDF in Obsidian** (off by default):
+  - **Off** — render finishes, notice shows the PDF path. Open it however you want.
+  - **On** — rendered PDF opens in a vertical split on the right via Obsidian's built-in PDF viewer. Source tab keeps focus.
+- Re-running the render reuses the existing PDF tab — no tab stacking.
+- The `.qmd` source must live inside the vault (the rendered `.pdf` lands next to it; Obsidian only opens vault files).
+- Custom `output-dir` in `_quarto.yml` is not yet handled — the plugin looks for `<basename>.pdf` next to the source.
 
 ---
 
@@ -76,8 +97,19 @@ This plugin requires Obsidian **v0.10.12** or later to work properly, as the nec
 
 ### From Within Obsidian
 
-The plugin is available in Obsidian's community plugin list.  
-For beta releases, you can use the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat).
+The plugin is available in Obsidian's community plugin list. The community-store version always tracks the latest **stable** release (currently `0.0.3`).
+
+### Beta releases via BRAT
+
+Pre-release versions (`-rc.x`, `-beta.x`) are **only** distributed through [BRAT](https://github.com/TfTHacker/obsidian42-brat). The community plugin store will not show them.
+
+1. Install **Obsidian42 - BRAT** from the community plugins list.
+2. Open BRAT settings → **Add Beta plugin with frozen version** is *not* needed — use **Add Beta plugin**.
+3. Enter the repo: `danieltomasz/qmd-as-md-obsidian`.
+4. BRAT reads `manifest-beta.json` from the repo and installs the latest pre-release tag (e.g. `0.1.0-rc.1`).
+5. Enable the plugin in **Settings → Community plugins**.
+
+To switch back to stable, remove the plugin from BRAT and reinstall from the community store.
 
 ### From GitHub
 

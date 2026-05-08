@@ -1,6 +1,6 @@
 {
   "name": "qmd-as-md-obsidian",
-  "version": "0.0.3",
+  "version": "0.1.0-rc.1",
   "description": "Edit and preview QMD files in Obsidian with Quarto support",
   "main": "main.js",
   "type": "module",
