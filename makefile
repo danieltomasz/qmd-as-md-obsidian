@@ -62,15 +62,16 @@ release-beta:
 	npm install; \
 	npm run build; \
 	[ -f main.js ] || { echo "main.js not produced by build"; exit 1; }; \
-	echo "→ Staging manifest-beta.json as the release's manifest.json..."; \
-	cp manifest-beta.json /tmp/qmd-release-manifest.json; \
+	echo "→ Staging manifest-beta.json as a file literally named manifest.json..."; \
+	STAGE=$$(mktemp -d); \
+	cp manifest-beta.json $$STAGE/manifest.json; \
 	echo "→ Creating GitHub pre-release $$VERSION..."; \
 	gh release create $$VERSION \
 		--title "$$VERSION (beta)" \
 		--prerelease \
 		--notes "$$FINAL_NOTES" \
-		main.js "/tmp/qmd-release-manifest.json#manifest.json"; \
-	rm /tmp/qmd-release-manifest.json; \
+		main.js $$STAGE/manifest.json; \
+	rm -rf $$STAGE; \
 	echo "✓ Released $$VERSION (beta). BRAT users: 'Check for updates'."
 
 release-stable:
