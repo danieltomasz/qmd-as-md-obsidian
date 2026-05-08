@@ -18,7 +18,7 @@ The main difference between this plugin and these other plugins is that this plu
 ## Version History
 
 ### 0.1.0-rc.1 (beta — BRAT only)
-- Added **Render Quarto to PDF** command and ribbon icon. Runs `quarto render <file> --to pdf` on the active `.qmd` file.
+- Added **Render Quarto to PDF** command and ribbon icon. Runs `quarto render <file>` on the active `.qmd` file (output format driven by the document's YAML — `format: typst` for Typst, `format: pdf` for LaTeX).
 - Added **"Open Compiled PDF in Obsidian"** setting toggle. When enabled, the rendered PDF opens inside Obsidian using the built-in PDF viewer.
 - PDF opens in a vertical split to the right of the source `.qmd`, so the source tab is no longer replaced.
 - Re-running the render reuses the existing PDF tab (reloads the file in place) instead of stacking new tabs.
@@ -51,7 +51,15 @@ The main difference between this plugin and these other plugins is that this plu
 
 Available from **0.1.0-rc.1** via BRAT.
 
-- Command: **Render Quarto to PDF** (palette + ribbon icon `file-output`). Runs `quarto render <file> --to pdf` on the active `.qmd`.
+Three command-palette entries (all share the ribbon icon `file-output`, which is bound to the YAML-driven variant):
+
+| Command | What it runs | When to use |
+|---------|--------------|-------------|
+| **Render Quarto (use YAML format)** | `quarto render <file>` | Document's YAML `format:` block decides the output. If YAML targets a non-PDF format (e.g. `html`, `docx`), the file still renders but Obsidian's built-in viewer will not open it — the plugin shows a path notice. |
+| **Render Quarto to PDF (Typst engine)** | `quarto render <file> --to typst` | Force the Typst engine regardless of YAML. Use `QUARTO_TYPST` setting to pin a Typst binary. |
+| **Render Quarto to PDF (LaTeX engine)** | `quarto render <file> --to pdf` | Force the LaTeX engine (`lualatex`/`xelatex`/`pdflatex`). |
+
+The CLI flag `--to pdf` is **Quarto's LaTeX path**, not a generic "any PDF" — that's why the engine-specific commands are split out. Pick the YAML-driven one if your `.qmd` already declares the format you want; pick an explicit engine to override per-render without touching the file.
 - Setting **Open Compiled PDF in Obsidian** (off by default):
   - **Off** — render finishes, notice shows the PDF path. Open it however you want.
   - **On** — rendered PDF opens in a vertical split on the right via Obsidian's built-in PDF viewer. Source tab keeps focus.

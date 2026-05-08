@@ -71,15 +71,9 @@ export default class QmdAsMdPlugin extends Plugin {
         if (file) await this.renderPdf(file);
       });
 
-      this.addCommand({
-        id: 'render-quarto-pdf',
-        name: 'Render Quarto to PDF',
-        icon: 'file-output',
-        callback: async () => {
-          const file = this.getActiveQuartoFile();
-          if (file) await this.renderPdf(file);
-        },
-      });
+      this.registerRenderCommand('render-quarto-pdf', 'Render Quarto (use YAML format)');
+      this.registerRenderCommand('render-quarto-pdf-typst', 'Render Quarto to PDF (Typst engine)', 'typst');
+      this.registerRenderCommand('render-quarto-pdf-latex', 'Render Quarto to PDF (LaTeX engine)', 'pdf');
 
       console.log('Commands added');
     } catch (error) {
@@ -127,6 +121,18 @@ export default class QmdAsMdPlugin extends Plugin {
 
   pdfPathFor(qmdFile: TFile): string {
     return qmdFile.path.replace(/\.qmd$/i, '.pdf');
+  }
+
+  registerRenderCommand(id: string, name: string, toFormat?: 'pdf' | 'typst') {
+    this.addCommand({
+      id,
+      name,
+      icon: 'file-output',
+      callback: async () => {
+        const file = this.getActiveQuartoFile();
+        if (file) await this.renderPdf(file, toFormat);
+      },
+    });
   }
 
   registerQmdExtension() {
@@ -247,7 +253,7 @@ export default class QmdAsMdPlugin extends Plugin {
     }
   }
 
-  async renderPdf(file: TFile) {
+  async renderPdf(file: TFile, toFormat?: 'pdf' | 'typst') {
     try {
       const abstractFile = this.app.vault.getAbstractFileByPath(file.path);
       if (!abstractFile || !(abstractFile instanceof TFile)) {
@@ -264,22 +270,35 @@ export default class QmdAsMdPlugin extends Plugin {
         envVars.QUARTO_TYPST = this.settings.quartoTypst.trim();
       }
 
-      new Notice('Rendering Quarto to PDF...');
+      const engineLabel = toFormat === 'typst' ? 'Typst' : toFormat === 'pdf' ? 'LaTeX' : 'use YAML format';
+      new Notice(`Rendering Quarto (${engineLabel})...`);
 
-      const pdfVaultPath = this.pdfPathFor(file);
+      // Best-guess path used for the pre-render leaf-capture (so we can
+      // reuse an existing PDF tab on recompile). The authoritative path
+      // comes from quarto's "Output created:" stdout line, parsed below.
+      const guessedPdfPath = this.pdfPathFor(file);
       const existingLeaf = this.app.workspace
         .getLeavesOfType('pdf')
-        .find((l) => (l.view as any)?.file?.path === pdfVaultPath);
+        .find((l) => (l.view as any)?.file?.path === guessedPdfPath);
 
-      const quartoProcess = spawn(
-        this.settings.quartoPath,
-        ['render', filePath, '--to', 'pdf'],
-        { cwd: workingDir, env: envVars }
-      );
+      const args = ['render', filePath];
+      if (toFormat) args.push('--to', toFormat);
+
+      const quartoProcess = spawn(this.settings.quartoPath, args, {
+        cwd: workingDir,
+        env: envVars,
+      });
+
+      let detectedOutputBasename: string | null = null;
 
       quartoProcess.stdout?.on('data', (data: Buffer) => {
+        const output = data.toString();
         if (this.settings.emitCompilationLogs) {
-          console.log(`Quarto Render Output: ${data.toString()}`);
+          console.log(`Quarto Render Output: ${output}`);
+        }
+        const match = output.match(/Output created:\s*(.+?)\s*$/m);
+        if (match) {
+          detectedOutputBasename = path.basename(match[1].trim());
         }
       });
 
@@ -295,17 +314,28 @@ export default class QmdAsMdPlugin extends Plugin {
           return;
         }
 
-        const pdfTFile = await this.waitForVaultFile(pdfVaultPath);
+        const sourceDir = file.parent?.path ?? '';
+        const outputVaultPath = detectedOutputBasename
+          ? (sourceDir ? `${sourceDir}/${detectedOutputBasename}` : detectedOutputBasename)
+          : guessedPdfPath;
 
-        if (!pdfTFile) {
+        const outputTFile = await this.waitForVaultFile(outputVaultPath);
+
+        if (!outputTFile) {
           new Notice(
-            `Quarto rendered, but ${pdfVaultPath} did not appear in the vault within the timeout. Check Quarto's output-dir or vault sync.`
+            `Quarto rendered, but ${outputVaultPath} did not appear in the vault within the timeout. Check Quarto's output-dir or vault sync.`
           );
           return;
         }
 
-        if (!this.settings.openPdfInObsidian) {
-          new Notice(`PDF rendered: ${pdfVaultPath}`);
+        const isPdf = outputVaultPath.toLowerCase().endsWith('.pdf');
+
+        if (!this.settings.openPdfInObsidian || !isPdf) {
+          new Notice(
+            isPdf
+              ? `PDF rendered: ${outputVaultPath}`
+              : `Rendered: ${outputVaultPath} (Obsidian's built-in viewer only handles PDFs).`
+          );
           return;
         }
 
@@ -313,13 +343,13 @@ export default class QmdAsMdPlugin extends Plugin {
           const leaf = existingLeaf?.parent != null
             ? existingLeaf
             : this.app.workspace.getLeaf('split', 'vertical');
-          await leaf.openFile(pdfTFile, { active: false });
+          await leaf.openFile(outputTFile, { active: false });
           this.app.workspace.revealLeaf(leaf);
-          new Notice(`Opened ${pdfVaultPath}`);
+          new Notice(`Opened ${outputVaultPath}`);
         } catch (err) {
           console.error('Failed to open PDF in Obsidian:', err);
           new Notice(
-            `PDF rendered at ${pdfVaultPath}, but Obsidian could not open it (no PDF viewer registered?).`
+            `PDF rendered at ${outputVaultPath}, but Obsidian could not open it (no PDF viewer registered?).`
           );
         }
       });
