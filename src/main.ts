@@ -273,7 +273,7 @@ export default class QmdAsMdPlugin extends Plugin {
 
       const quartoProcess = spawn(
         this.settings.quartoPath,
-        ['render', filePath, '--to', 'pdf'],
+        ['render', filePath],
         { cwd: workingDir, env: envVars }
       );
 

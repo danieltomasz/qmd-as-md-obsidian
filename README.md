@@ -18,7 +18,7 @@ The main difference between this plugin and these other plugins is that this plu
 ## Version History
 
 ### 0.1.0-rc.1 (beta — BRAT only)
-- Added **Render Quarto to PDF** command and ribbon icon. Runs `quarto render <file> --to pdf` on the active `.qmd` file.
+- Added **Render Quarto to PDF** command and ribbon icon. Runs `quarto render <file>` on the active `.qmd` file (output format driven by the document's YAML — `format: typst` for Typst, `format: pdf` for LaTeX).
 - Added **"Open Compiled PDF in Obsidian"** setting toggle. When enabled, the rendered PDF opens inside Obsidian using the built-in PDF viewer.
 - PDF opens in a vertical split to the right of the source `.qmd`, so the source tab is no longer replaced.
 - Re-running the render reuses the existing PDF tab (reloads the file in place) instead of stacking new tabs.
@@ -51,7 +51,10 @@ The main difference between this plugin and these other plugins is that this plu
 
 Available from **0.1.0-rc.1** via BRAT.
 
-- Command: **Render Quarto to PDF** (palette + ribbon icon `file-output`). Runs `quarto render <file> --to pdf` on the active `.qmd`.
+- Command: **Render Quarto to PDF** (palette + ribbon icon `file-output`). Runs `quarto render <file>` on the active `.qmd` and lets the document's YAML decide the output format.
+- The plugin does **not** pass `--to pdf` — that flag is Quarto's LaTeX-engine PDF path and would force `lualatex`/`xelatex`/`pdflatex` to run even when you have declared a Typst format. Choose the engine in the document's YAML header:
+  - `format: pdf` — PDF via LaTeX.
+  - `format: typst` — PDF via Typst (use the `QUARTO_TYPST` setting to pin a custom Typst binary).
 - Setting **Open Compiled PDF in Obsidian** (off by default):
   - **Off** — render finishes, notice shows the PDF path. Open it however you want.
   - **On** — rendered PDF opens in a vertical split on the right via Obsidian's built-in PDF viewer. Source tab keeps focus.
