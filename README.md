@@ -148,3 +148,45 @@ To contribute or customize the plugin:
 Alternatively, clone the repository directly into your plugins folder. After installing dependencies, run `npm run dev` to enable watch mode for live compilation.  
 Reload Obsidian (`Ctrl + R`) to view updates.
 
+### Make targets
+
+The `makefile` wraps common tasks. Run `make help` for the list:
+
+| Target           | What it does                                                                 |
+|------------------|------------------------------------------------------------------------------|
+| `make build`     | `npm install`, build `main.js`, zip, clean.                                  |
+| `make zip`       | Bundle `main.js` + `manifest.json` into `qmd-as-md.zip`.                     |
+| `make clean`     | Wipe `node_modules`, build artefacts, lockfile.                              |
+| `make audit`     | `npm audit` — security advisories for current dependency tree.               |
+| `make outdated`  | `npm outdated` — newer upstream versions available.                          |
+| `make check-deps`| Run both `audit` and `outdated`.                                             |
+
+### Cutting a release
+
+Two release channels share the same `main` branch:
+
+- **Stable** — `manifest.json` is the source of truth (e.g. `0.0.3`). Goes to the community plugin store.
+- **Beta** — `manifest-beta.json` is the source of truth (e.g. `0.1.0-rc.1`). Distributed only via [BRAT](https://github.com/TfTHacker/obsidian42-brat). Pre-release semver suffixes (`-rc.x`, `-beta.x`) are accepted by BRAT but rejected by the community store, so betas live exclusively here.
+
+To publish a release:
+
+```bash
+# Beta — bump manifest-beta.json first, then:
+make release-beta                          # interactive prompt for notes
+make release-beta NOTES="Fixed leaf bug"   # non-interactive
+
+# Stable — bump manifest.json first, then:
+make release-stable
+```
+
+Both targets:
+1. Read the version from the appropriate manifest.
+2. Refuse to overwrite an existing tag.
+3. Build `main.js` fresh.
+4. Create a GitHub release tagged with the version (no `v` prefix — Obsidian convention) and attach `main.js` plus the correctly-versioned `manifest.json`. The beta target uploads `manifest-beta.json` renamed to `manifest.json` so BRAT finds the expected asset name.
+5. Mark beta releases as `--prerelease`.
+
+Requirements: `gh` authenticated against the repo, working tree clean, `node` available.
+
+After a beta release, BRAT users can hit **Check for updates to all beta plugins** to pull it.
+
