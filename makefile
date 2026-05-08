@@ -11,8 +11,7 @@ SHELL := /bin/bash
 define preflight
 command -v gh >/dev/null || { echo "gh CLI not found. Install from https://cli.github.com"; exit 1; }; \
 command -v node >/dev/null || { echo "node not found"; exit 1; }; \
-command -v npm >/dev/null || { echo "npm not found"; exit 1; }; \
-command -v zip >/dev/null || { echo "zip not found"; exit 1; }
+command -v npm >/dev/null || { echo "npm not found"; exit 1; }
 endef
 
 define build_main_js
@@ -93,7 +92,7 @@ release-beta:
 	fi; \
 	$(build_main_js); \
 	echo "→ Staging manifest-beta.json as manifest.json..."; \
-	STAGE=$$(mktemp -d); \
+	STAGE=$$(mktemp -d -t qmd-as-md.XXXXXX); \
 	cp manifest-beta.json "$$STAGE/manifest.json"; \
 	echo "→ Creating GitHub pre-release $$VERSION..."; \
 	gh release create "$$VERSION" \

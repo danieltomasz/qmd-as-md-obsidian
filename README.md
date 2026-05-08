@@ -154,7 +154,7 @@ The `makefile` wraps common tasks. Run `make help` for the list:
 
 | Target              | What it does                                                                                |
 |---------------------|---------------------------------------------------------------------------------------------|
-| `make build`        | `npm install`, build `main.js`, then zip.                                                   |
+| `make build`        | Install deps (`npm ci` when `package-lock.json` exists, otherwise `npm install`), build `main.js`, then zip. |
 | `make zip`          | Bundle `main.js` + `manifest.json` into `qmd-as-md.zip`.                                    |
 | `make clean`        | Wipe `node_modules` and build artefacts.                                                    |
 | `make release-beta` | Publish a GitHub pre-release using the version in `manifest-beta.json`.                     |
