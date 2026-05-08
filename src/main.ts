@@ -125,6 +125,10 @@ export default class QmdAsMdPlugin extends Plugin {
     return null;
   }
 
+  pdfPathFor(qmdFile: TFile): string {
+    return qmdFile.path.replace(/\.qmd$/i, '.pdf');
+  }
+
   registerQmdExtension() {
     console.log('Registering .qmd as markdown...');
     this.registerExtensions(['qmd'], 'markdown');
@@ -262,7 +266,7 @@ export default class QmdAsMdPlugin extends Plugin {
 
       new Notice('Rendering Quarto to PDF...');
 
-      const pdfVaultPath = file.path.replace(/\.qmd$/i, '.pdf');
+      const pdfVaultPath = this.pdfPathFor(file);
       const existingLeaf = this.app.workspace
         .getLeavesOfType('pdf')
         .find((l) => (l.view as any)?.file?.path === pdfVaultPath);
@@ -306,10 +310,8 @@ export default class QmdAsMdPlugin extends Plugin {
         }
 
         try {
-          const stillAttached =
-            existingLeaf && (existingLeaf as any).parent != null;
-          const leaf = stillAttached
-            ? existingLeaf!
+          const leaf = existingLeaf?.parent != null
+            ? existingLeaf
             : this.app.workspace.getLeaf('split', 'vertical');
           await leaf.openFile(pdfTFile, { active: false });
           this.app.workspace.revealLeaf(leaf);
