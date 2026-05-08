@@ -73,11 +73,31 @@ export default class QmdAsMdPlugin extends Plugin {
 
       this.addCommand({
         id: 'render-quarto-pdf',
-        name: 'Render Quarto to PDF',
+        name: 'Render Quarto to PDF (use YAML format)',
         icon: 'file-output',
         callback: async () => {
           const file = this.getActiveQuartoFile();
           if (file) await this.renderPdf(file);
+        },
+      });
+
+      this.addCommand({
+        id: 'render-quarto-pdf-typst',
+        name: 'Render Quarto to PDF (Typst engine)',
+        icon: 'file-output',
+        callback: async () => {
+          const file = this.getActiveQuartoFile();
+          if (file) await this.renderPdf(file, 'typst');
+        },
+      });
+
+      this.addCommand({
+        id: 'render-quarto-pdf-latex',
+        name: 'Render Quarto to PDF (LaTeX engine)',
+        icon: 'file-output',
+        callback: async () => {
+          const file = this.getActiveQuartoFile();
+          if (file) await this.renderPdf(file, 'pdf');
         },
       });
 
@@ -247,7 +267,7 @@ export default class QmdAsMdPlugin extends Plugin {
     }
   }
 
-  async renderPdf(file: TFile) {
+  async renderPdf(file: TFile, toFormat?: 'pdf' | 'typst') {
     try {
       const abstractFile = this.app.vault.getAbstractFileByPath(file.path);
       if (!abstractFile || !(abstractFile instanceof TFile)) {
@@ -264,18 +284,21 @@ export default class QmdAsMdPlugin extends Plugin {
         envVars.QUARTO_TYPST = this.settings.quartoTypst.trim();
       }
 
-      new Notice('Rendering Quarto to PDF...');
+      const engineLabel = toFormat === 'typst' ? 'Typst' : toFormat === 'pdf' ? 'LaTeX' : 'YAML format';
+      new Notice(`Rendering Quarto to PDF (${engineLabel})...`);
 
       const pdfVaultPath = this.pdfPathFor(file);
       const existingLeaf = this.app.workspace
         .getLeavesOfType('pdf')
         .find((l) => (l.view as any)?.file?.path === pdfVaultPath);
 
-      const quartoProcess = spawn(
-        this.settings.quartoPath,
-        ['render', filePath],
-        { cwd: workingDir, env: envVars }
-      );
+      const args = ['render', filePath];
+      if (toFormat) args.push('--to', toFormat);
+
+      const quartoProcess = spawn(this.settings.quartoPath, args, {
+        cwd: workingDir,
+        env: envVars,
+      });
 
       quartoProcess.stdout?.on('data', (data: Buffer) => {
         if (this.settings.emitCompilationLogs) {

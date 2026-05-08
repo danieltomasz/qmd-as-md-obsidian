@@ -51,10 +51,15 @@ The main difference between this plugin and these other plugins is that this plu
 
 Available from **0.1.0-rc.1** via BRAT.
 
-- Command: **Render Quarto to PDF** (palette + ribbon icon `file-output`). Runs `quarto render <file>` on the active `.qmd` and lets the document's YAML decide the output format.
-- The plugin does **not** pass `--to pdf` — that flag is Quarto's LaTeX-engine PDF path and would force `lualatex`/`xelatex`/`pdflatex` to run even when you have declared a Typst format. Choose the engine in the document's YAML header:
-  - `format: pdf` — PDF via LaTeX.
-  - `format: typst` — PDF via Typst (use the `QUARTO_TYPST` setting to pin a custom Typst binary).
+Three command-palette entries (all share the ribbon icon `file-output`, which is bound to the YAML-driven variant):
+
+| Command | What it runs | When to use |
+|---------|--------------|-------------|
+| **Render Quarto to PDF (use YAML format)** | `quarto render <file>` | Document's YAML `format:` block decides the engine. Recommended default. |
+| **Render Quarto to PDF (Typst engine)** | `quarto render <file> --to typst` | Force the Typst engine regardless of YAML. Use `QUARTO_TYPST` setting to pin a Typst binary. |
+| **Render Quarto to PDF (LaTeX engine)** | `quarto render <file> --to pdf` | Force the LaTeX engine (`lualatex`/`xelatex`/`pdflatex`). |
+
+The CLI flag `--to pdf` is **Quarto's LaTeX path**, not a generic "any PDF" — that's why the engine-specific commands are split out. Pick the YAML-driven one if your `.qmd` already declares the format you want; pick an explicit engine to override per-render without touching the file.
 - Setting **Open Compiled PDF in Obsidian** (off by default):
   - **Off** — render finishes, notice shows the PDF path. Open it however you want.
   - **On** — rendered PDF opens in a vertical split on the right via Obsidian's built-in PDF viewer. Source tab keeps focus.
