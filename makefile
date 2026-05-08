@@ -22,20 +22,37 @@ npm run build; \
 [ -f main.js ] || { echo "main.js not produced by build"; exit 1; }
 endef
 
-# Reads .version from the manifest in $$MANIFEST and exports VERSION.
-# Surfaces the real node/JSON error: bash's `VAR=$(failing-cmd)` does
-# NOT trip `set -e`, so without explicit capture a missing file or
-# malformed JSON would silently leave VERSION empty and the caller
-# would only see a generic message.
+# Reads .version from the manifest in $$MANIFEST and sets VERSION.
+# Captures node's exit code explicitly so a missing file, malformed
+# JSON, or a missing `.version` field surface their real cause
+# instead of a generic message. The `&& RC=0 || RC=$$?` form is
+# required because under `set -e` a bare failing command substitution
+# would abort the recipe before we could read $$?.
 define read_version
 [ -f "$$MANIFEST" ] || { echo "$$MANIFEST not found in $$(pwd). Run make from the repo root."; exit 1; }; \
-VERSION=$$(node -p "require('./$$MANIFEST').version" 2>&1) || { echo "Failed to read version from $$MANIFEST:"; echo "$$VERSION"; exit 1; }; \
+NODE_OUT=$$(node -p "require('./$$MANIFEST').version" 2>&1) && RC=0 || RC=$$?; \
+if [ $$RC -ne 0 ]; then \
+	echo "Failed to read version from $$MANIFEST:"; \
+	echo "$$NODE_OUT"; \
+	exit 1; \
+fi; \
+VERSION="$$NODE_OUT"; \
 if [ -z "$$VERSION" ] || [ "$$VERSION" = "undefined" ]; then \
 	echo "$$MANIFEST has no .version field"; exit 1; \
 fi
 endef
 
 # --- Standard targets ------------------------------------------------------
+
+help:
+	@echo "Targets:"
+	@echo "  build           Install deps, build main.js, then zip."
+	@echo "  zip             Bundle main.js + manifest.json into qmd-as-md.zip."
+	@echo "  clean           Remove node_modules and build artefacts."
+	@echo "  release-beta    Publish GitHub pre-release from manifest-beta.json."
+	@echo "  release-stable  Publish GitHub release from manifest.json."
+	@echo ""
+	@echo "Optional: NOTES=\"...\" passes non-interactive release notes."
 
 zip:
 	zip qmd-as-md.zip main.js manifest.json
@@ -44,7 +61,9 @@ clean:
 	rm -rf node_modules dist build .cache *.log *.tmp
 
 build:
-	npm install && npm run build && $(MAKE) zip
+	@set -e; \
+	$(build_main_js); \
+	$(MAKE) zip
 
 # --- Releases --------------------------------------------------------------
 # Publish a GitHub release whose assets BRAT (or the community store) reads.
@@ -107,4 +126,4 @@ release-stable:
 		main.js manifest.json; \
 	echo "✓ Released $$VERSION stable."
 
-.PHONY: zip clean build release-beta release-stable
+.PHONY: help zip clean build release-beta release-stable
