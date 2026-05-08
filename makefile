@@ -44,7 +44,10 @@ check-deps: audit outdated
 # Requires: gh authenticated, node, working tree clean.
 
 release-beta:
-	@VERSION=$$(node -p "require('./manifest-beta.json').version"); \
+	@set -e; \
+	command -v gh >/dev/null || { echo "gh CLI not found. Install from https://cli.github.com"; exit 1; }; \
+	command -v node >/dev/null || { echo "node not found"; exit 1; }; \
+	VERSION=$$(node -p "require('./manifest-beta.json').version"); \
 	if [ -z "$$VERSION" ]; then echo "Could not read version from manifest-beta.json"; exit 1; fi; \
 	if gh release view $$VERSION >/dev/null 2>&1; then \
 		echo "Release $$VERSION already exists. Bump manifest-beta.json first."; exit 1; \
@@ -56,7 +59,9 @@ release-beta:
 		FINAL_NOTES="$(NOTES)"; \
 	fi; \
 	echo "→ Building main.js..."; \
-	npm install --silent && npm run build; \
+	npm install; \
+	npm run build; \
+	[ -f main.js ] || { echo "main.js not produced by build"; exit 1; }; \
 	echo "→ Staging manifest-beta.json as the release's manifest.json..."; \
 	cp manifest-beta.json /tmp/qmd-release-manifest.json; \
 	echo "→ Creating GitHub pre-release $$VERSION..."; \
@@ -69,7 +74,10 @@ release-beta:
 	echo "✓ Released $$VERSION (beta). BRAT users: 'Check for updates'."
 
 release-stable:
-	@VERSION=$$(node -p "require('./manifest.json').version"); \
+	@set -e; \
+	command -v gh >/dev/null || { echo "gh CLI not found. Install from https://cli.github.com"; exit 1; }; \
+	command -v node >/dev/null || { echo "node not found"; exit 1; }; \
+	VERSION=$$(node -p "require('./manifest.json').version"); \
 	if [ -z "$$VERSION" ]; then echo "Could not read version from manifest.json"; exit 1; fi; \
 	if gh release view $$VERSION >/dev/null 2>&1; then \
 		echo "Release $$VERSION already exists. Bump manifest.json first."; exit 1; \
@@ -81,7 +89,9 @@ release-stable:
 		FINAL_NOTES="$(NOTES)"; \
 	fi; \
 	echo "→ Building main.js..."; \
-	npm install --silent && npm run build; \
+	npm install; \
+	npm run build; \
+	[ -f main.js ] || { echo "main.js not produced by build"; exit 1; }; \
 	echo "→ Creating GitHub release $$VERSION..."; \
 	gh release create $$VERSION \
 		--title "$$VERSION" \
