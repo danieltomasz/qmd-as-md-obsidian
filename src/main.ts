@@ -262,6 +262,11 @@ export default class QmdAsMdPlugin extends Plugin {
 
       new Notice('Rendering Quarto to PDF...');
 
+      const pdfVaultPath = file.path.replace(/\.qmd$/i, '.pdf');
+      const existingLeaf = this.app.workspace
+        .getLeavesOfType('pdf')
+        .find((l) => (l.view as any)?.file?.path === pdfVaultPath);
+
       const quartoProcess = spawn(
         this.settings.quartoPath,
         ['render', filePath, '--to', 'pdf'],
@@ -286,7 +291,6 @@ export default class QmdAsMdPlugin extends Plugin {
           return;
         }
 
-        const pdfVaultPath = file.path.replace(/\.qmd$/i, '.pdf');
         const pdfTFile = await this.waitForVaultFile(pdfVaultPath);
 
         if (!pdfTFile) {
@@ -302,11 +306,11 @@ export default class QmdAsMdPlugin extends Plugin {
         }
 
         try {
-          const existing = this.app.workspace
-            .getLeavesOfType('pdf')
-            .find((l) => (l.view as any)?.file?.path === pdfTFile.path);
-
-          const leaf = existing ?? this.app.workspace.getLeaf('split', 'vertical');
+          const stillAttached =
+            existingLeaf && (existingLeaf as any).parent != null;
+          const leaf = stillAttached
+            ? existingLeaf!
+            : this.app.workspace.getLeaf('split', 'vertical');
           await leaf.openFile(pdfTFile, { active: false });
           this.app.workspace.revealLeaf(leaf);
           new Notice(`Opened ${pdfVaultPath}`);
