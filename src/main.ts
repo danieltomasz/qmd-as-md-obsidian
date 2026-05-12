@@ -287,18 +287,16 @@ export default class QmdAsMdPlugin extends Plugin {
       );
 
       let previewUrl: string | null = null;
-      let pdfPreviewLeaf: WorkspaceLeaf | null = null;
       let pdfPreviewPath: string | null = null;
-      // Serialize calls to openOrRefreshPdfPreview. Quarto preview emits
-      // "Output created: foo.pdf" on every recompile, sometimes several
-      // times in quick succession; without serialization each in-flight
-      // call hits getLeaf('split', 'vertical') before the previous one
-      // updates pdfPreviewLeaf, opening multiple stacked tabs. If the
-      // user also has Obsidian's "When splitting, duplicate current
-      // note" preference on, those fresh splits briefly show the
-      // currently-edited .qmd before our openFile resolves — which is
-      // what the user reported.
-      let pdfPreviewChain: Promise<void> = Promise.resolve();
+      // Open the PDF tab once per preview session. Quarto preview emits
+      // "Output created: foo.pdf" on every recompile (and sometimes
+      // multiple times per recompile). Reacting to every emission
+      // caused stacked tabs; serializing helped but did not fully
+      // prevent it under Obsidian's "When splitting, duplicate current
+      // note" preference. Obsidian's PDF viewer reloads on file mtime
+      // change on its own, so we only need to open the leaf the first
+      // time and let Obsidian's watcher handle live reload thereafter.
+      let pdfPreviewOpened = false;
 
       // Same routing rule as renderPdf: Quarto's stdout/stderr split is
       // not strictly content/error, so log by line prefix instead of
@@ -323,13 +321,16 @@ export default class QmdAsMdPlugin extends Plugin {
             const sourceDir = file.parent?.path ?? '';
             const vaultPath = sourceDir ? `${sourceDir}/${outBasename}` : outBasename;
             pdfPreviewPath = vaultPath;
-            // Append to the chain so calls run strictly in order; the
-            // captured leaf ref is read fresh at the moment each call
-            // actually starts, not when the line arrived.
-            pdfPreviewChain = pdfPreviewChain.then(async () => {
-              const leaf = await this.openOrRefreshPdfPreview(vaultPath, pdfPreviewLeaf);
-              if (leaf) pdfPreviewLeaf = leaf;
-            });
+            if (!pdfPreviewOpened) {
+              pdfPreviewOpened = true;
+              // Fire-and-forget; openOrRefreshPdfPreview's lookup will
+              // reuse any pre-existing PDF leaf showing this file.
+              this.openOrRefreshPdfPreview(vaultPath, null).catch((err) => {
+                console.error('[qmd-as-md] PDF preview open failed:', err);
+                // Allow a retry on the next compile if this one threw.
+                pdfPreviewOpened = false;
+              });
+            }
             continue;
           }
 
