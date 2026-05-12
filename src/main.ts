@@ -7,6 +7,7 @@ import {
   App,
   Setting,
   FileSystemAdapter,
+  WorkspaceLeaf,
 } from 'obsidian';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
@@ -125,6 +126,35 @@ export default class QmdAsMdPlugin extends Plugin {
     return qmdFile.path.replace(/\.qmd$/i, '.pdf');
   }
 
+  // Open (or reuse) a leaf showing the given vault-relative PDF path in
+  // Obsidian's native PDF viewer. Returns the leaf so callers can keep
+  // refreshing it on subsequent preview compiles.
+  async openOrRefreshPdfPreview(
+    vaultPath: string,
+    existingLeaf: WorkspaceLeaf | null
+  ): Promise<WorkspaceLeaf | null> {
+    const pdfTFile = await this.waitForVaultFile(vaultPath);
+    if (!pdfTFile) {
+      new Notice(
+        `Quarto preview produced ${vaultPath} but it did not appear in the vault within the timeout.`
+      );
+      return null;
+    }
+    try {
+      const leaf =
+        existingLeaf?.parent != null
+          ? existingLeaf
+          : this.app.workspace.getLeaf('split', 'vertical');
+      await leaf.openFile(pdfTFile, { active: false });
+      this.app.workspace.revealLeaf(leaf);
+      return leaf;
+    } catch (err) {
+      console.error('[qmd-as-md] Failed to open PDF preview in native viewer:', err);
+      new Notice(`Could not open ${vaultPath} in Obsidian's PDF viewer.`);
+      return null;
+    }
+  }
+
   async openPreviewUrl(url: string) {
     new Notice(`Preview available at ${url}`);
 
@@ -235,6 +265,8 @@ export default class QmdAsMdPlugin extends Plugin {
       });
 
       let previewUrl: string | null = null;
+      let pdfPreviewLeaf: WorkspaceLeaf | null = null;
+      let pdfPreviewPath: string | null = null;
 
       // Same routing rule as renderPdf: Quarto's stdout/stderr split is
       // not strictly content/error, so log by line prefix instead of
@@ -247,11 +279,37 @@ export default class QmdAsMdPlugin extends Plugin {
           } else if (this.settings.emitCompilationLogs) {
             console.log(`Quarto Preview: ${line}`);
           }
+
+          // Detect "Output created: <path>" — quarto prints this on every
+          // compile in preview mode. If the output is a PDF, route to
+          // Obsidian's native PDF viewer rather than the webviewer page
+          // Quarto serves at /web/viewer.html. Subsequent compiles refresh
+          // the same leaf so live reload still works.
+          const outMatch = line.match(/Output created:\s*(.+?)\s*$/);
+          if (outMatch && /\.pdf$/i.test(outMatch[1].trim()) && this.settings.previewInObsidian) {
+            const outBasename = path.basename(outMatch[1].trim());
+            const sourceDir = file.parent?.path ?? '';
+            const vaultPath = sourceDir ? `${sourceDir}/${outBasename}` : outBasename;
+            pdfPreviewPath = vaultPath;
+            // Fire-and-forget; errors logged inside.
+            this.openOrRefreshPdfPreview(vaultPath, pdfPreviewLeaf).then((leaf) => {
+              pdfPreviewLeaf = leaf ?? pdfPreviewLeaf;
+            });
+            continue;
+          }
+
           if (!previewUrl && line.includes('Browse at')) {
             const match = line.match(/Browse at\s+(http:\/\/[^\s]+)/);
             if (match && match[1]) {
               previewUrl = match[1];
-              this.openPreviewUrl(previewUrl);
+              // If we already opened a native PDF preview, skip the
+              // webviewer URL — Quarto's PDF.js wrapper would just be
+              // a worse version of the same content.
+              if (pdfPreviewPath) {
+                new Notice(`PDF preview opened natively. Server URL: ${previewUrl}`);
+              } else {
+                this.openPreviewUrl(previewUrl);
+              }
             }
           }
         }
