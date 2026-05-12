@@ -1,38 +1,22 @@
-# QMD as Markdown Obsidian Plugin
+# QMD as Markdown — Obsidian plugin
 
 A plugin for [Obsidian](https://obsidian.md) that allows seamless editing of QMD files as if they were Markdown.
 
 QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. These files are compatible with editors like RStudio and VSCode.
 
-This plugin originated in 2022 as a minimal change to a now-archived project by deathau: [deathau/txt-as-md-obsidian](https://github.com/deathau/txt-as-md-obsidian).  It has since evolved to include additional integrations and features.
+This plugin originated in 2022 as a minimal change to a now-archived project by deathau: [deathau/txt-as-md-obsidian](https://github.com/deathau/txt-as-md-obsidian). It has since evolved to include additional integrations and features.
 
-As of the end of 2024, there are also other plugins  exist that make it easier to work with Obsidian and Quarto:
+## Features
 
-- [Ridian](https://github.com/MichelNivard/Ridian) offers R code block execution and variable previews.  
-- [Quarto Exporter](https://github.com/AndreasThinks/obsidian-to-quarto-exporter) helps export Obsidian Markdown files into the QMD format.  
+- View and edit `.qmd` files using Obsidian's standard Markdown editor.
+- Run Quarto preview on the current file from the command palette.
+- Render to PDF and (optionally) open the result inside Obsidian.
 
-The main difference between this plugin and these other plugins is that this plugin allows you to compile QMD files as they are, without exporting them to another folder. In this regard, it is more similar to the Pandoc plugin.
+## Usage
 
----
+### Editing QMD files
 
-## Version History
-
-### 0.1.0-rc.1 (beta — BRAT only)
-- Added **Render Quarto to PDF** command and ribbon icon. Runs `quarto render <file>` on the active `.qmd` file (output format driven by the document's YAML — `format: typst` for Typst, `format: pdf` for LaTeX).
-- Added **"Open Compiled PDF in Obsidian"** setting toggle. When enabled, the rendered PDF opens inside Obsidian using the built-in PDF viewer.
-- PDF opens in a vertical split to the right of the source `.qmd`, so the source tab is no longer replaced.
-- Re-running the render reuses the existing PDF tab (reloads the file in place) instead of stacking new tabs.
-- Command exposes a `file-output` icon, so plugins like **Commander** can pin it to the toolbar.
-
-### 0.0.3
-- Added an option to run Quarto preview for the current `qmd` file.
-
-### 0.0.2
-- Repurposed the plugin to enable viewing and editing of QMD files.
-- Made the plugin available via BRAT and Obsidian.
-
-### 0.0.1
-- Initial release by death_md, supporting `.txt` files.
+Once installed, `.qmd` files open in Obsidian's Markdown editor automatically.
 
 ---
 
@@ -44,30 +28,28 @@ The main difference between this plugin and these other plugins is that this plu
 - [ ] Enable the creation of new QMD files.
 - [x] Add a render command. *(0.1.0-rc.1 — render to PDF, open inside Obsidian.)*
 
+To enable linking with Quarto files, ensure the **"Detect all file extensions"** toggle is activated in the `Files & Links` section of Obsidian settings.
 
----
+### Quarto preview
 
-## Rendering to PDF (beta)
+Available from the command palette: run **Quarto Preview** on the active `.qmd` file. *(Since 0.0.3.)*
 
-Available from **0.1.0-rc.1** via BRAT.
+### Rendering to PDF
+
+*(Since 0.1)*
 
 Three command-palette entries (all share the ribbon icon `file-output`, which is bound to the YAML-driven variant):
 
 | Command | What it runs | When to use |
 |---------|--------------|-------------|
-| **Render Quarto (use YAML format)** | `quarto render <file>` | Document's YAML `format:` block decides the output. If YAML targets a non-PDF format (e.g. `html`, `docx`), the file still renders but Obsidian's built-in viewer will not open it — the plugin shows a path notice. |
+| **Render Quarto (use format specified in YAML)** | `quarto render <file>` | Document's YAML `format:` block decides the output. If YAML targets a non-PDF format (e.g. `html`, `docx`), the file still renders but Obsidian's built-in viewer will not open it — the plugin shows a path notice. |
 | **Render Quarto to PDF (Typst engine)** | `quarto render <file> --to typst` | Force the Typst engine regardless of YAML. Use `QUARTO_TYPST` setting to pin a Typst binary. |
 | **Render Quarto to PDF (LaTeX engine)** | `quarto render <file> --to pdf` | Force the LaTeX engine (`lualatex`/`xelatex`/`pdflatex`). |
 
 The CLI flag `--to pdf` is **Quarto's LaTeX path**, not a generic "any PDF" — that's why the engine-specific commands are split out. Pick the YAML-driven one if your `.qmd` already declares the format you want; pick an explicit engine to override per-render without touching the file.
-- Setting **Open Compiled PDF in Obsidian** (off by default):
-  - **Off** — render finishes, notice shows the PDF path. Open it however you want.
-  - **On** — rendered PDF opens in a vertical split on the right via Obsidian's built-in PDF viewer. Source tab keeps focus.
-- Re-running the render reuses the existing PDF tab — no tab stacking.
-- The `.qmd` source must live inside the vault (the rendered `.pdf` lands next to it; Obsidian only opens vault files).
-- Custom `output-dir` in `_quarto.yml` is not yet handled — the plugin looks for `<basename>.pdf` next to the source.
 
----
+#### Setting: Open Compiled PDF in Obsidian
+
 
 ## Live preview (beta)
 
@@ -83,65 +65,87 @@ Either way, the underlying `quarto preview` process keeps running until you togg
 ---
 
 ## Enhancing Quarto File Integration in Obsidian
+=======
+Off by default.
 
+- **Off** — render finishes, notice shows the PDF path. Open it however you want.
+- **On** — rendered PDF opens in a vertical split on the right via Obsidian's built-in PDF viewer. Source tab keeps focus.
 
-To enable linking with Quarto files, ensure the **"Detect all file extensions"** toggle is activated in the `Files & Links` section of Obsidian settings.
+Re-running the render reuses the existing PDF tab — no tab stacking.
 
-If you'd like to hide additional file types, use the following CSS snippet. Save it in your snippets folder and enable it via the Appearance menu in Obsidian. You can add more file extensions as needed.
+#### Caveats
 
-```css
-div[data-path$='.Rproj'] {
-	display: none;
-}
+- The `.qmd` source must live inside the vault (the rendered `.pdf` lands next to it; Obsidian only opens vault files).
+- Custom `output-dir` in `_quarto.yml` is not yet handled — the plugin looks for `<basename>.pdf` next to the source.
 
-div[data-path$='.cls'] {
-	display: none;
-}
+## Alternatives
 
-div[data-path$='.yml'] {
-	display: none;
-}
+As of the end of 2024, there are also other plugins that make it easier to work with Obsidian and Quarto:
 
-div[data-path$='.json'] {
-	display: none;
-}
-```
----
+- [Ridian](https://github.com/MichelNivard/Ridian) offers R code block execution and variable previews.
+- [Quarto Exporter](https://github.com/AndreasThinks/obsidian-to-quarto-exporter) helps export Obsidian Markdown files into the QMD format.
 
-## Compatibility
-
-This plugin requires Obsidian **v0.10.12** or later to work properly, as the necessary APIs were introduced in this version.
-
----
+The main difference between this plugin and these other plugins is that this plugin allows you to compile QMD files as they are, without exporting them to another folder. In this regard, it is more similar to the Pandoc plugin.
 
 ## Installation
 
-### From Within Obsidian
+### From the community plugin store (stable)
 
-The plugin is available in Obsidian's community plugin list. The community-store version always tracks the latest **stable** release (currently `0.0.3`).
+Search for **QMD as Markdown** in **Settings → Community plugins → Browse**. The community-store version always tracks the latest **stable** release (currently `0.1.0`).
 
 ### Beta releases via BRAT
 
 Pre-release versions (`-rc.x`, `-beta.x`) are **only** distributed through [BRAT](https://github.com/TfTHacker/obsidian42-brat). The community plugin store will not show them.
 
 1. Install **Obsidian42 - BRAT** from the community plugins list.
-2. Open BRAT settings → **Add Beta plugin with frozen version** is *not* needed — use **Add Beta plugin**.
+2. Open BRAT settings → use **Add Beta plugin** (the "frozen version" option is not needed).
 3. Enter the repo: `danieltomasz/qmd-as-md-obsidian`.
 4. BRAT reads `manifest-beta.json` from the repo and installs the latest pre-release tag (e.g. `0.1.0-rc.1`).
 5. Enable the plugin in **Settings → Community plugins**.
 
 To switch back to stable, remove the plugin from BRAT and reinstall from the community store.
 
-### From GitHub
+### Manual install from GitHub
 
 1. Download the latest release from the Releases section of the GitHub repository.
 2. Extract the plugin folder from the zip file to your vault's plugins directory: `<vault>/.obsidian/plugins/`
    - Note: On some systems, the `.obsidian` folder might be hidden. On macOS, press `Command + Shift + Dot` to reveal hidden folders in Finder.
 3. Reload Obsidian.
-4. If prompted about Safe Mode, disable it and enable the plugin.  
-   Alternatively, go to **Settings → Third-party plugins**, disable Safe Mode, and enable the plugin manually.
+4. If prompted about Safe Mode, disable it and enable the plugin. Alternatively, go to **Settings → Third-party plugins**, disable Safe Mode, and enable the plugin manually.
 
----
+## Hiding clutter from Quarto projects
+
+If you'd like to hide additional file types, use the following CSS snippet. Save it in your snippets folder and enable it via the Appearance menu in Obsidian. You can add more file extensions as needed.
+
+```css
+div[data-path$='.Rproj'] {
+ display: none;
+}
+
+div[data-path$='.cls'] {
+ display: none;
+}
+
+div[data-path$='.yml'] {
+ display: none;
+}
+
+div[data-path$='.json'] {
+ display: none;
+}
+```
+
+## Roadmap
+
+- [ ] Use Obsidian 1.8's web preview to enable seamless in-app previews.
+- [ ] Recognize `{language}` for code block syntax highlighting.
+- [ ] Add CSS support for callout blocks.
+- [ ] Enable the creation of new QMD files.
+- [x] Add a render command. *(Shipped in 0.1.0-rc.1.)*
+
+## Compatibility
+
+This plugin requires Obsidian **v0.10.12** or later to work properly, as the necessary APIs were introduced in this version.
 
 ## Security
 
@@ -149,99 +153,7 @@ To switch back to stable, remove the plugin from BRAT and reinstall from the com
 
 The source code for this plugin is open and available on GitHub for audit. While I assure you that the plugin does not collect data or perform any malicious actions, installing plugins in Obsidian always involves a level of trust.
 
----
+## Changelog & contributing
 
-## Development
-
-This project is built using TypeScript for type checking and documentation.  
-It relies on the latest [Obsidian plugin API](https://github.com/obsidianmd/obsidian-api) in TypeScript Definition format, which includes TSDoc comments for documentation.
-
-**Note:** The Obsidian API is in early alpha and may change at any time.
-
-To contribute or customize the plugin:
-
-1. Clone this repository.
-2. Run `npm i` or `yarn` to install dependencies.
-3. Use `npm run build` to compile the plugin.
-4. Copy `manifest.json`, `main.js`, and `styles.css` to a subfolder in your plugins directory: `<vault>/.obsidian/plugins/<plugin-name>/`
-5. Reload Obsidian to apply changes.
-
-Alternatively, clone the repository directly into your plugins folder. After installing dependencies, run `npm run dev` to enable watch mode for live compilation.  
-Reload Obsidian (`Ctrl + R`) to view updates.
-
-### Make targets
-
-The `makefile` wraps common tasks. Run `make help` for the list:
-
-| Target              | What it does                                                                                |
-|---------------------|---------------------------------------------------------------------------------------------|
-| `make build`        | Install deps (`npm ci` when `package-lock.json` exists, otherwise `npm install`), build `main.js`, then zip. |
-| `make zip`          | Bundle `main.js` + `manifest.json` into `qmd-as-md.zip`.                                    |
-| `make clean`        | Wipe `node_modules` and build artefacts.                                                    |
-| `make release-beta` | Publish a GitHub pre-release using the version in `manifest-beta.json`.                     |
-| `make release-stable` | Publish a GitHub release using the version in `manifest.json`.                            |
-
-### Cutting a release
-
-Two release channels share the same `main` branch:
-
-- **Stable** — `manifest.json` is the source of truth (e.g. `0.0.3`). Goes to the community plugin store.
-- **Beta** — `manifest-beta.json` is the source of truth (e.g. `0.1.0-rc.1`). Distributed only via [BRAT](https://github.com/TfTHacker/obsidian42-brat). Pre-release semver suffixes (`-rc.x`, `-beta.x`) are accepted by BRAT but rejected by the community store, so betas live exclusively here.
-
-To publish a release:
-
-```bash
-# Beta — bump manifest-beta.json first, then:
-make release-beta                          # interactive prompt for notes
-make release-beta NOTES="Fixed leaf bug"   # non-interactive
-
-# Stable — bump manifest.json first, then:
-make release-stable
-```
-
-Both targets:
-1. Check that `gh`, `node`, `npm`, and `zip` are on `PATH`.
-2. Read the version from the appropriate manifest, and refuse to overwrite an existing tag.
-3. Build `main.js` fresh (`npm ci` if `package-lock.json` exists, otherwise `npm install`).
-4. Create a GitHub release tagged with the version (no `v` prefix — Obsidian convention) and attach `main.js` plus a correctly-versioned `manifest.json`. The beta target stages `manifest-beta.json` into a tempdir under the literal name `manifest.json` so BRAT finds the asset it expects.
-5. Mark beta releases as `--prerelease`.
-
-Requirements: `gh` authenticated against the repo, working tree clean.
-
-After a beta release, BRAT users can hit **Check for updates to all beta plugins** to pull it.
-
-### Troubleshooting the release flow
-
-#### `Could not read version from manifest-beta.json` / empty version
-
-The recipe runs `node -p "require('./manifest-beta.json').version"` and treats an empty result as a hard error. Common causes:
-
-- **Wrong working directory.** The recipe expects to be run from the repo root. `cd` to it (`pwd` should show the directory containing `manifest-beta.json`) before running `make`.
-- **Manifest missing or malformed.** The recipe now prints the real Node.js error before bailing — read the message rather than the generic line.
-- **`gh` not authenticated for this repo.** Run `gh auth status` and `gh repo set-default danieltomasz/qmd-as-md-obsidian` if needed.
-
-#### Variables silently lost between recipe lines (macOS default Make)
-
-macOS ships **GNU Make 3.81** (released 2006), which predates `.ONESHELL` (added in 3.82, 2010). On 3.81 the directive is silently ignored, so each recipe line runs in its own shell and any variable set on one line is gone by the next. The recipes in this repo are written as single `\`-joined shell invocations specifically to remain compatible with 3.81 — do **not** add `.ONESHELL` back without verifying the local `make --version`.
-
-If you want a modern Make on macOS:
-
-```bash
-brew install make
-gmake release-beta NOTES="…"      # invoked as `gmake`, not `make`
-```
-
-#### BRAT says "this is not an Obsidian plugin"
-
-BRAT walks the latest GitHub release looking for an asset named literally `manifest.json`. The previous version of this Makefile relied on `gh release create`'s `path#displayname` rename syntax, which silently no-op'd in some `gh` CLI versions and uploaded the asset under its real basename (e.g. `qmd-release-manifest.json`) — invisible to BRAT. The current recipe sidesteps the rename mechanism by staging the file under the correct name in a tempdir before upload. If BRAT still rejects a release, inspect the assets:
-
-```bash
-gh release view <tag> | grep -i asset
-```
-
-The list must contain both `main.js` and `manifest.json` (exact spelling).
-
-#### Release was created but `gh release create` failed silently
-
-Older versions of the recipe used long `\`-joined chains without `set -e`. A failed `npm install`/`npm run build` or missing tool would let the chain continue past the failure, eventually erroring on `gh release create` with no clear cause. The current recipe sets `set -e` at the start of each release target, validates each tool with `command -v`, and verifies `main.js` was produced before invoking `gh`. If something still goes wrong, the first error surfaced by the recipe is the real one — read up, not down.
-
+- See [`CHANGELOG.md`](./CHANGELOG.md) for the full version history.
+- See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for development setup, the `make` targets, and the release process.
