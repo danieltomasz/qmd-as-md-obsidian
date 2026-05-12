@@ -154,7 +154,15 @@ export default class QmdAsMdPlugin extends Plugin {
               .getLeavesOfType('pdf')
               .find((l) => (l.view as any)?.file?.path === pdfTFile.path) ?? null;
       const leaf = reusable ?? this.app.workspace.getLeaf('split', 'vertical');
-      await leaf.openFile(pdfTFile, { active: false });
+      // Skip the openFile call when the leaf already shows this file —
+      // calling openFile in that case is harmless for the file display
+      // but still triggers a reveal/focus shuffle the user does not want.
+      // Obsidian's PDF viewer picks up the file rewrite via its own
+      // mtime watcher, so live reload still works without our help.
+      const currentFile = (leaf.view as any)?.file;
+      if (!currentFile || currentFile.path !== pdfTFile.path) {
+        await leaf.openFile(pdfTFile, { active: false });
+      }
       this.app.workspace.revealLeaf(leaf);
       return leaf;
     } catch (err) {
@@ -281,6 +289,16 @@ export default class QmdAsMdPlugin extends Plugin {
       let previewUrl: string | null = null;
       let pdfPreviewLeaf: WorkspaceLeaf | null = null;
       let pdfPreviewPath: string | null = null;
+      // Serialize calls to openOrRefreshPdfPreview. Quarto preview emits
+      // "Output created: foo.pdf" on every recompile, sometimes several
+      // times in quick succession; without serialization each in-flight
+      // call hits getLeaf('split', 'vertical') before the previous one
+      // updates pdfPreviewLeaf, opening multiple stacked tabs. If the
+      // user also has Obsidian's "When splitting, duplicate current
+      // note" preference on, those fresh splits briefly show the
+      // currently-edited .qmd before our openFile resolves — which is
+      // what the user reported.
+      let pdfPreviewChain: Promise<void> = Promise.resolve();
 
       // Same routing rule as renderPdf: Quarto's stdout/stderr split is
       // not strictly content/error, so log by line prefix instead of
@@ -305,9 +323,12 @@ export default class QmdAsMdPlugin extends Plugin {
             const sourceDir = file.parent?.path ?? '';
             const vaultPath = sourceDir ? `${sourceDir}/${outBasename}` : outBasename;
             pdfPreviewPath = vaultPath;
-            // Fire-and-forget; errors logged inside.
-            this.openOrRefreshPdfPreview(vaultPath, pdfPreviewLeaf).then((leaf) => {
-              pdfPreviewLeaf = leaf ?? pdfPreviewLeaf;
+            // Append to the chain so calls run strictly in order; the
+            // captured leaf ref is read fresh at the moment each call
+            // actually starts, not when the line arrived.
+            pdfPreviewChain = pdfPreviewChain.then(async () => {
+              const leaf = await this.openOrRefreshPdfPreview(vaultPath, pdfPreviewLeaf);
+              if (leaf) pdfPreviewLeaf = leaf;
             });
             continue;
           }
