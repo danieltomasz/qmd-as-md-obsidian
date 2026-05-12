@@ -13,3 +13,5 @@ styles.css
 data.json
 release.zip
 _archive/
+.claude/
+.vscode/
