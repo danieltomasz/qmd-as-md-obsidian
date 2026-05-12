@@ -38,7 +38,7 @@ The main difference between this plugin and these other plugins is that this plu
 
 ## To-Do List
 
-- [ ] Use Obsidian 1.8’s web preview to enable seamless in-app previews.
+- [x] Use Obsidian 1.8's web preview to enable seamless in-app previews. *(toggle in settings — see "Live preview" section.)*
 - [ ] Recognize `{language}` for code block syntax highlighting.
 - [ ] Add CSS support for callout blocks.
 - [ ] Enable the creation of new QMD files.
@@ -66,6 +66,19 @@ The CLI flag `--to pdf` is **Quarto's LaTeX path**, not a generic "any PDF" — 
 - Re-running the render reuses the existing PDF tab — no tab stacking.
 - The `.qmd` source must live inside the vault (the rendered `.pdf` lands next to it; Obsidian only opens vault files).
 - Custom `output-dir` in `_quarto.yml` is not yet handled — the plugin looks for `<basename>.pdf` next to the source.
+
+---
+
+## Live preview (beta)
+
+The **Toggle Quarto Preview** command (palette + ribbon icon `eye`, default hotkey `Ctrl+Shift+P`) spawns `quarto preview` on the active `.qmd`, which runs a live HTTP server that re-renders on every save.
+
+Setting **Open Quarto preview in Obsidian** decides where the preview URL lands:
+
+- **On** (default) — uses Obsidian 1.8's built-in `webviewer` view to render the live preview in a tab inside Obsidian. No window switching; the preview re-renders in place as you save the source.
+- **Off** — opens the preview URL in your default external browser (via `window.open`, which Electron routes through `shell.openExternal`).
+
+Either way, the underlying `quarto preview` process keeps running until you toggle the command again — the toggle controls where the URL is opened, not the server's behaviour.
 
 ---
 

@@ -17,6 +17,7 @@ interface QmdPluginSettings {
   quartoTypst: string;
   emitCompilationLogs: boolean;
   openPdfInObsidian: boolean;
+  previewInObsidian: boolean;
 }
 
 const DEFAULT_SETTINGS: QmdPluginSettings = {
@@ -25,6 +26,7 @@ const DEFAULT_SETTINGS: QmdPluginSettings = {
   quartoTypst: '',
   emitCompilationLogs: true,
   openPdfInObsidian: false,
+  previewInObsidian: true,
 };
 
 export default class QmdAsMdPlugin extends Plugin {
@@ -123,6 +125,25 @@ export default class QmdAsMdPlugin extends Plugin {
     return qmdFile.path.replace(/\.qmd$/i, '.pdf');
   }
 
+  openPreviewUrl(url: string) {
+    new Notice(`Preview available at ${url}`);
+
+    if (!this.settings.previewInObsidian) {
+      // Electron's renderer routes window.open for http(s) URLs through
+      // shell.openExternal, which lands in the user's default browser.
+      window.open(url, '_blank');
+      return;
+    }
+
+    const leaf = this.app.workspace.getLeaf('tab');
+    leaf.setViewState({
+      type: 'webviewer',
+      active: true,
+      state: { url },
+    });
+    this.app.workspace.revealLeaf(leaf);
+  }
+
   registerRenderCommand(id: string, name: string, toFormat?: 'pdf' | 'typst') {
     this.addCommand({
       id,
@@ -184,36 +205,29 @@ export default class QmdAsMdPlugin extends Plugin {
 
       let previewUrl: string | null = null;
 
-      quartoProcess.stdout?.on('data', (data: Buffer) => {
-        const output = data.toString();
-        if (this.settings.emitCompilationLogs) {
-          console.log(`Quarto Preview Output: ${output}`);
-        }
-
-        if (output.includes('Browse at')) {
-          const match = output.match(/Browse at\s+(http:\/\/[^\s]+)/);
-          if (match && match[1]) {
-            previewUrl = match[1];
-            new Notice(`Preview available at ${previewUrl}`);
-
-            const leaf = this.app.workspace.getLeaf('tab');
-            leaf.setViewState({
-              type: 'webviewer',
-              active: true,
-              state: {
-                url: previewUrl,
-              },
-            });
-            this.app.workspace.revealLeaf(leaf);
+      // Same routing rule as renderPdf: Quarto's stdout/stderr split is
+      // not strictly content/error, so log by line prefix instead of
+      // by stream. Only "ERROR:"-prefixed lines hit console.error.
+      const handlePreviewOutput = (chunk: string) => {
+        for (const line of chunk.split(/\r?\n/)) {
+          if (!line) continue;
+          if (/^ERROR:/.test(line)) {
+            console.error(`Quarto Preview: ${line}`);
+          } else if (this.settings.emitCompilationLogs) {
+            console.log(`Quarto Preview: ${line}`);
+          }
+          if (!previewUrl && line.includes('Browse at')) {
+            const match = line.match(/Browse at\s+(http:\/\/[^\s]+)/);
+            if (match && match[1]) {
+              previewUrl = match[1];
+              this.openPreviewUrl(previewUrl);
+            }
           }
         }
-      });
+      };
 
-      quartoProcess.stderr?.on('data', (data: Buffer) => {
-        if (this.settings.emitCompilationLogs) {
-          console.error(`Quarto Preview Error: ${data}`);
-        }
-      });
+      quartoProcess.stdout?.on('data', (data: Buffer) => handlePreviewOutput(data.toString()));
+      quartoProcess.stderr?.on('data', (data: Buffer) => handlePreviewOutput(data.toString()));
 
       quartoProcess.on('close', (code: number | null) => {
         if (code !== null && code !== 0) {
@@ -291,22 +305,28 @@ export default class QmdAsMdPlugin extends Plugin {
 
       let detectedOutputBasename: string | null = null;
 
-      quartoProcess.stdout?.on('data', (data: Buffer) => {
-        const output = data.toString();
-        if (this.settings.emitCompilationLogs) {
-          console.log(`Quarto Render Output: ${output}`);
+      // Quarto prints progress to BOTH stdout and stderr. Most of stderr
+      // is informational (typst progress, "Output created:", DONE, etc.)
+      // Only lines prefixed with "ERROR:" are real errors; logging the
+      // rest via console.error surfaced harmless lines as red error
+      // toasts in Obsidian. Route by content, not by stream.
+      const handleQuartoOutput = (chunk: string) => {
+        for (const line of chunk.split(/\r?\n/)) {
+          if (!line) continue;
+          if (/^ERROR:/.test(line)) {
+            console.error(`Quarto: ${line}`);
+          } else if (this.settings.emitCompilationLogs) {
+            console.log(`Quarto: ${line}`);
+          }
+          const match = line.match(/Output created:\s*(.+?)\s*$/);
+          if (match) {
+            detectedOutputBasename = path.basename(match[1].trim());
+          }
         }
-        const match = output.match(/Output created:\s*(.+?)\s*$/m);
-        if (match) {
-          detectedOutputBasename = path.basename(match[1].trim());
-        }
-      });
+      };
 
-      quartoProcess.stderr?.on('data', (data: Buffer) => {
-        if (this.settings.emitCompilationLogs) {
-          console.error(`Quarto Render Error: ${data.toString()}`);
-        }
-      });
+      quartoProcess.stdout?.on('data', (data: Buffer) => handleQuartoOutput(data.toString()));
+      quartoProcess.stderr?.on('data', (data: Buffer) => handleQuartoOutput(data.toString()));
 
       quartoProcess.on('close', async (code: number | null) => {
         if (code !== 0) {
@@ -456,6 +476,21 @@ class QmdSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             console.log(`Open PDF in Obsidian set to: ${value}`);
             this.plugin.settings.openPdfInObsidian = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Open Quarto preview in Obsidian')
+      .setDesc(
+        'Use Obsidian 1.8\'s built-in web viewer (webviewer view) for the live Quarto preview server. When off, the preview URL opens in your default external browser instead.'
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.previewInObsidian)
+          .onChange(async (value) => {
+            console.log(`Preview in Obsidian set to: ${value}`);
+            this.plugin.settings.previewInObsidian = value;
             await this.plugin.saveSettings();
           })
       );
