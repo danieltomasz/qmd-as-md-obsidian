@@ -58,14 +58,16 @@ Re-running the render reuses the existing PDF tab — no tab stacking.
 
 The **Toggle Quarto Preview** command (palette + ribbon icon `eye`, default hotkey `Ctrl+Shift+P`) spawns `quarto preview` on the active `.qmd`, which runs a live HTTP server that re-renders on every save.
 
-Setting **Open Quarto preview in Obsidian** decides where the preview URL lands:
+Setting **Open Quarto preview in Obsidian** decides where the preview lands:
 
-- **On** (default) — uses Obsidian 1.8's built-in `webviewer` view to render the live preview in a tab inside Obsidian. Requires the **Web viewer** core plugin to be enabled (Settings → Core plugins). The preview re-renders in place as you save the source.
-- **Off** — opens the preview URL in your default external browser (via `window.open`, which Electron routes through `shell.openExternal`).
+- **On** (default):
+  - **PDF outputs** (e.g. `format: typst`, `format: pdf`) open in Obsidian's **native PDF viewer** in a right split. Each compile from the running preview refreshes the same tab — no Quarto-served PDF.js wrapper page. The HTTP server keeps running in the background, but the URL is not opened; instead, a notice reports the server URL for reference.
+  - **Non-PDF outputs** (HTML, etc.) open in Obsidian 1.8's built-in `webviewer` view. Requires the **Web viewer** core plugin to be enabled (Settings → Core plugins). The preview re-renders in place as you save the source.
+- **Off**: the preview URL opens in your default external browser (via `window.open`, which Electron routes through `shell.openExternal`).
 
-If the Web viewer core plugin is disabled while the toggle is on, the plugin shows a notice instead of silently failing.
+If the Web viewer core plugin is disabled while the toggle is on for a non-PDF preview, the plugin shows a notice instead of silently failing.
 
-Either way, the underlying `quarto preview` process keeps running until you toggle the command again — the toggle controls where the URL is opened, not the server's behaviour.
+Either way, the underlying `quarto preview` process keeps running until you toggle the command again — the toggle controls where the output is shown, not the server's behaviour.
 
 ## Alternatives
 
