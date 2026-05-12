@@ -129,6 +129,12 @@ export default class QmdAsMdPlugin extends Plugin {
   // Open (or reuse) a leaf showing the given vault-relative PDF path in
   // Obsidian's native PDF viewer. Returns the leaf so callers can keep
   // refreshing it on subsequent preview compiles.
+  //
+  // Leaf-resolution order:
+  //   1. Caller's captured ref, if still attached to the workspace.
+  //   2. Any open 'pdf' leaf already showing this exact file (user may
+  //      have opened it manually, or renderPdf may have opened it).
+  //   3. New vertical split.
   async openOrRefreshPdfPreview(
     vaultPath: string,
     existingLeaf: WorkspaceLeaf | null
@@ -141,10 +147,13 @@ export default class QmdAsMdPlugin extends Plugin {
       return null;
     }
     try {
-      const leaf =
+      const reusable =
         existingLeaf?.parent != null
           ? existingLeaf
-          : this.app.workspace.getLeaf('split', 'vertical');
+          : this.app.workspace
+              .getLeavesOfType('pdf')
+              .find((l) => (l.view as any)?.file?.path === pdfTFile.path) ?? null;
+      const leaf = reusable ?? this.app.workspace.getLeaf('split', 'vertical');
       await leaf.openFile(pdfTFile, { active: false });
       this.app.workspace.revealLeaf(leaf);
       return leaf;
@@ -577,7 +586,11 @@ class QmdSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('Open Quarto preview in Obsidian')
       .setDesc(
-        'Use Obsidian 1.8\'s built-in web viewer (webviewer view) for the live Quarto preview server. When off, the preview URL opens in your default external browser instead.'
+        'When on: PDF previews (format: typst / pdf) open in Obsidian\'s native PDF viewer; ' +
+          'non-PDF previews (HTML, etc.) open in Obsidian 1.8\'s built-in web viewer ' +
+          '(requires the "Web viewer" core plugin enabled in Settings → Core plugins). ' +
+          'Live reload from the running quarto preview is preserved in both cases. ' +
+          'When off, the preview URL opens in your default external browser instead.'
       )
       .addToggle((toggle) =>
         toggle
