@@ -259,10 +259,15 @@ export default class QmdAsMdPlugin extends Plugin {
         console.log(`QUARTO_TYPST set to: ${envVars.QUARTO_TYPST}`);
       }
 
-      const quartoProcess = spawn(this.settings.quartoPath, ['preview', filePath], {
-        cwd: workingDir,
-        env: envVars,
-      });
+      // --no-browse stops Quarto from auto-opening the preview URL in
+      // the default system browser. Without it the plugin's own
+      // open-in-Obsidian/open-external logic competes with Quarto's,
+      // and the user sees two windows (Obsidian leaf + external tab).
+      const quartoProcess = spawn(
+        this.settings.quartoPath,
+        ['preview', filePath, '--no-browse'],
+        { cwd: workingDir, env: envVars }
+      );
 
       let previewUrl: string | null = null;
       let pdfPreviewLeaf: WorkspaceLeaf | null = null;
