@@ -6,6 +6,52 @@ QMD files combine Markdown with executable code cells and are supported by [Quar
 
 This plugin originated in 2022 as a minimal change to a now-archived project by deathau: [deathau/txt-as-md-obsidian](https://github.com/deathau/txt-as-md-obsidian). It has since evolved to include additional integrations and features.
 
+## Features
+
+- View and edit `.qmd` files using Obsidian's standard Markdown editor.
+- Run Quarto preview on the current file from the command palette.
+- Render to PDF and (optionally) open the result inside Obsidian.
+
+## Usage
+
+### Editing QMD files
+
+Once installed, `.qmd` files open in Obsidian's Markdown editor automatically.
+
+To enable linking with Quarto files, ensure the **"Detect all file extensions"** toggle is activated in the `Files & Links` section of Obsidian settings.
+
+### Quarto preview
+
+Available from the command palette: run **Quarto Preview** on the active `.qmd` file. *(Since 0.0.3.)*
+
+### Rendering to PDF
+
+*(Since 0.1)*
+
+Three command-palette entries (all share the ribbon icon `file-output`, which is bound to the YAML-driven variant):
+
+| Command | What it runs | When to use |
+|---------|--------------|-------------|
+| **Render Quarto (use YAML format)** | `quarto render <file>` | Document's YAML `format:` block decides the output. If YAML targets a non-PDF format (e.g. `html`, `docx`), the file still renders but Obsidian's built-in viewer will not open it — the plugin shows a path notice. |
+| **Render Quarto to PDF (Typst engine)** | `quarto render <file> --to typst` | Force the Typst engine regardless of YAML. Use `QUARTO_TYPST` setting to pin a Typst binary. |
+| **Render Quarto to PDF (LaTeX engine)** | `quarto render <file> --to pdf` | Force the LaTeX engine (`lualatex`/`xelatex`/`pdflatex`). |
+
+The CLI flag `--to pdf` is **Quarto's LaTeX path**, not a generic "any PDF" — that's why the engine-specific commands are split out. Pick the YAML-driven one if your `.qmd` already declares the format you want; pick an explicit engine to override per-render without touching the file.
+
+#### Setting: Open Compiled PDF in Obsidian
+
+Off by default.
+
+- **Off** — render finishes, notice shows the PDF path. Open it however you want.
+- **On** — rendered PDF opens in a vertical split on the right via Obsidian's built-in PDF viewer. Source tab keeps focus.
+
+Re-running the render reuses the existing PDF tab — no tab stacking.
+
+#### Caveats
+
+- The `.qmd` source must live inside the vault (the rendered `.pdf` lands next to it; Obsidian only opens vault files).
+- Custom `output-dir` in `_quarto.yml` is not yet handled — the plugin looks for `<basename>.pdf` next to the source.
+
 ## Alternatives
 
 As of the end of 2024, there are also other plugins that make it easier to work with Obsidian and Quarto:
@@ -14,12 +60,6 @@ As of the end of 2024, there are also other plugins that make it easier to work 
 - [Quarto Exporter](https://github.com/AndreasThinks/obsidian-to-quarto-exporter) helps export Obsidian Markdown files into the QMD format.
 
 The main difference between this plugin and these other plugins is that this plugin allows you to compile QMD files as they are, without exporting them to another folder. In this regard, it is more similar to the Pandoc plugin.
-
-## Features
-
-- View and edit `.qmd` files using Obsidian's standard Markdown editor.
-- Run Quarto preview on the current file from the command palette.
-- Render to PDF and (optionally) open the result inside Obsidian. *(Beta — BRAT only.)*
 
 ## Installation
 
@@ -46,46 +86,6 @@ To switch back to stable, remove the plugin from BRAT and reinstall from the com
    - Note: On some systems, the `.obsidian` folder might be hidden. On macOS, press `Command + Shift + Dot` to reveal hidden folders in Finder.
 3. Reload Obsidian.
 4. If prompted about Safe Mode, disable it and enable the plugin. Alternatively, go to **Settings → Third-party plugins**, disable Safe Mode, and enable the plugin manually.
-
-## Usage
-
-### Editing QMD files
-
-Once installed, `.qmd` files open in Obsidian's Markdown editor automatically.
-
-To enable linking with Quarto files, ensure the **"Detect all file extensions"** toggle is activated in the `Files & Links` section of Obsidian settings.
-
-### Quarto preview
-
-Available from the command palette: run **Quarto Preview** on the active `.qmd` file. *(Since 0.0.3.)*
-
-### Rendering to PDF (beta)
-
-Available from **0.1.0-rc.1** via BRAT.
-
-Three command-palette entries (all share the ribbon icon `file-output`, which is bound to the YAML-driven variant):
-
-| Command | What it runs | When to use |
-|---------|--------------|-------------|
-| **Render Quarto (use YAML format)** | `quarto render <file>` | Document's YAML `format:` block decides the output. If YAML targets a non-PDF format (e.g. `html`, `docx`), the file still renders but Obsidian's built-in viewer will not open it — the plugin shows a path notice. |
-| **Render Quarto to PDF (Typst engine)** | `quarto render <file> --to typst` | Force the Typst engine regardless of YAML. Use `QUARTO_TYPST` setting to pin a Typst binary. |
-| **Render Quarto to PDF (LaTeX engine)** | `quarto render <file> --to pdf` | Force the LaTeX engine (`lualatex`/`xelatex`/`pdflatex`). |
-
-The CLI flag `--to pdf` is **Quarto's LaTeX path**, not a generic "any PDF" — that's why the engine-specific commands are split out. Pick the YAML-driven one if your `.qmd` already declares the format you want; pick an explicit engine to override per-render without touching the file.
-
-#### Setting: Open Compiled PDF in Obsidian
-
-Off by default.
-
-- **Off** — render finishes, notice shows the PDF path. Open it however you want.
-- **On** — rendered PDF opens in a vertical split on the right via Obsidian's built-in PDF viewer. Source tab keeps focus.
-
-Re-running the render reuses the existing PDF tab — no tab stacking.
-
-#### Caveats
-
-- The `.qmd` source must live inside the vault (the rendered `.pdf` lands next to it; Obsidian only opens vault files).
-- Custom `output-dir` in `_quarto.yml` is not yet handled — the plugin looks for `<basename>.pdf` next to the source.
 
 ## Hiding clutter from Quarto projects
 
