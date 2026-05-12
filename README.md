@@ -32,7 +32,7 @@ Three command-palette entries (all share the ribbon icon `file-output`, which is
 
 | Command | What it runs | When to use |
 |---------|--------------|-------------|
-| **Render Quarto (use YAML format)** | `quarto render <file>` | Document's YAML `format:` block decides the output. If YAML targets a non-PDF format (e.g. `html`, `docx`), the file still renders but Obsidian's built-in viewer will not open it — the plugin shows a path notice. |
+| **Render Quarto (use format specified in YAML)** | `quarto render <file>` | Document's YAML `format:` block decides the output. If YAML targets a non-PDF format (e.g. `html`, `docx`), the file still renders but Obsidian's built-in viewer will not open it — the plugin shows a path notice. |
 | **Render Quarto to PDF (Typst engine)** | `quarto render <file> --to typst` | Force the Typst engine regardless of YAML. Use `QUARTO_TYPST` setting to pin a Typst binary. |
 | **Render Quarto to PDF (LaTeX engine)** | `quarto render <file> --to pdf` | Force the LaTeX engine (`lualatex`/`xelatex`/`pdflatex`). |
 
@@ -65,7 +65,7 @@ The main difference between this plugin and these other plugins is that this plu
 
 ### From the community plugin store (stable)
 
-Search for **QMD as Markdown** in **Settings → Community plugins → Browse**. The community-store version always tracks the latest **stable** release (currently `0.0.3`).
+Search for **QMD as Markdown** in **Settings → Community plugins → Browse**. The community-store version always tracks the latest **stable** release (currently `0.1.0`).
 
 ### Beta releases via BRAT
 
