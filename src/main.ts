@@ -125,7 +125,7 @@ export default class QmdAsMdPlugin extends Plugin {
     return qmdFile.path.replace(/\.qmd$/i, '.pdf');
   }
 
-  openPreviewUrl(url: string) {
+  async openPreviewUrl(url: string) {
     new Notice(`Preview available at ${url}`);
 
     if (!this.settings.previewInObsidian) {
@@ -135,13 +135,44 @@ export default class QmdAsMdPlugin extends Plugin {
       return;
     }
 
-    const leaf = this.app.workspace.getLeaf('tab');
-    leaf.setViewState({
-      type: 'webviewer',
-      active: true,
-      state: { url },
-    });
-    this.app.workspace.revealLeaf(leaf);
+    // The "Web viewer" core plugin (Obsidian 1.8+) registers the
+    // 'webviewer' view type. If the user has it disabled, setViewState
+    // silently fails / leaves an empty leaf, and the user is left
+    // wondering why nothing opened. Detect and report instead.
+    const internalPlugins = (this.app as any).internalPlugins;
+    const webviewerOn =
+      internalPlugins?.getEnabledPluginById?.('webviewer') != null ||
+      internalPlugins?.plugins?.webviewer?.enabled === true;
+
+    if (!webviewerOn) {
+      new Notice(
+        'Obsidian core plugin "Web viewer" is disabled — cannot show preview in-app. ' +
+          'Enable it in Settings → Core plugins, or turn off "Open Quarto preview in Obsidian" ' +
+          'to use your external browser instead.',
+        10000
+      );
+      console.warn(
+        '[qmd-as-md] webviewer core plugin disabled; preview URL was:',
+        url
+      );
+      return;
+    }
+
+    try {
+      const leaf = this.app.workspace.getLeaf('tab');
+      await leaf.setViewState({
+        type: 'webviewer',
+        active: true,
+        state: { url },
+      });
+      this.app.workspace.revealLeaf(leaf);
+    } catch (err) {
+      console.error('[qmd-as-md] Failed to open preview in webviewer:', err);
+      new Notice(
+        `Could not open preview in Obsidian's web viewer. Falling back to external browser.`
+      );
+      window.open(url, '_blank');
+    }
   }
 
   registerRenderCommand(id: string, name: string, toFormat?: 'pdf' | 'typst') {
