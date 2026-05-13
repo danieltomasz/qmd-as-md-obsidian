@@ -18,7 +18,6 @@ interface QmdPluginSettings {
   quartoPath: string;
   enableQmdLinking: boolean;
   quartoTypst: string;
-  emitCompilationLogs: boolean;
   openPdfInObsidian: boolean;
   previewInObsidian: boolean;
 }
@@ -27,7 +26,6 @@ const DEFAULT_SETTINGS: QmdPluginSettings = {
   quartoPath: 'quarto',
   enableQmdLinking: true,
   quartoTypst: '',
-  emitCompilationLogs: true,
   openPdfInObsidian: false,
   previewInObsidian: true,
 };
@@ -320,14 +318,15 @@ export default class QmdAsMdPlugin extends Plugin {
       };
 
       // Same routing rule as renderPdf: Quarto's stdout/stderr split is
-      // not strictly content/error, so log by line prefix instead of
-      // by stream. Only "ERROR:"-prefixed lines hit console.error.
+      // not strictly content/error, so route by line prefix. Every
+      // line is logged so the user can see what the preview server is
+      // doing; "ERROR:"-prefixed lines go through console.error.
       const handlePreviewOutput = (chunk: string) => {
         for (const line of chunk.split(/\r?\n/)) {
           if (!line) continue;
           if (/^ERROR:/.test(line)) {
             console.error(`Quarto Preview: ${line}`);
-          } else if (this.settings.emitCompilationLogs) {
+          } else {
             console.log(`Quarto Preview: ${line}`);
           }
 
@@ -455,30 +454,18 @@ export default class QmdAsMdPlugin extends Plugin {
       });
 
       let detectedOutputBasename: string | null = null;
-      // Capture lines for the failure dump below. Bounded — a verbose
-      // render can produce thousands of lines and we only need recent
-      // context to diagnose a failure. Oldest lines are dropped first;
-      // if any were dropped, the dump notes that the prefix is missing.
-      const MAX_CAPTURED_LINES = 1000;
-      const capturedLines: string[] = [];
-      let droppedLineCount = 0;
 
       // Quarto prints progress to BOTH stdout and stderr. Most of stderr
       // is informational (typst progress, "Output created:", DONE, etc.)
-      // Only lines prefixed with "ERROR:" are real errors; logging the
-      // rest via console.error surfaced harmless lines as red error
-      // toasts in Obsidian. Route by content, not by stream.
+      // Route by line prefix: "ERROR:" goes through console.error so
+      // it stands out; everything else goes through console.log so the
+      // user can always see what Quarto is doing.
       const handleQuartoOutput = (chunk: string) => {
         for (const line of chunk.split(/\r?\n/)) {
           if (!line) continue;
-          capturedLines.push(line);
-          if (capturedLines.length > MAX_CAPTURED_LINES) {
-            capturedLines.shift();
-            droppedLineCount++;
-          }
           if (/^ERROR:/.test(line)) {
             console.error(`Quarto: ${line}`);
-          } else if (this.settings.emitCompilationLogs) {
+          } else {
             console.log(`Quarto: ${line}`);
           }
           const match = line.match(/Output created:\s*(.+?)\s*$/);
@@ -509,21 +496,10 @@ export default class QmdAsMdPlugin extends Plugin {
             : signal
               ? `terminated by ${signal}`
               : 'terminated';
-          // Dump captured output when the per-line stream was suppressed
-          // by emitCompilationLogs=false; if it was on, the lines are
-          // already in the console and re-printing them just spams.
-          if (!this.settings.emitCompilationLogs) {
-            const prefix = droppedLineCount > 0
-              ? `… (${droppedLineCount} earlier line(s) dropped)\n`
-              : '';
-            console.error(
-              `[qmd-as-md] Quarto render failed (${exitLabel}). Output:\n` +
-                prefix +
-                capturedLines.join('\n')
-            );
-          } else {
-            console.error(`[qmd-as-md] Quarto render failed (${exitLabel}).`);
-          }
+          // The full output was already streamed line-by-line through
+          // console.log / console.error as it arrived — no need to
+          // re-dump it. Just summarise the failure.
+          console.error(`[qmd-as-md] Quarto render failed (${exitLabel}).`);
           new Notice(`Quarto render failed (${exitLabel}). Check console.`);
           return;
         }
@@ -637,18 +613,6 @@ class QmdSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.quartoTypst)
           .onChange(async (value) => {
             this.plugin.settings.quartoTypst = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName('Emit compilation logs')
-      .setDesc('Print detailed Quarto compilation output to the developer console.')
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.emitCompilationLogs)
-          .onChange(async (value) => {
-            this.plugin.settings.emitCompilationLogs = value;
             await this.plugin.saveSettings();
           })
       );
