@@ -287,18 +287,53 @@ export default class QmdAsMdPlugin extends Plugin {
       );
 
       let previewUrl: string | null = null;
+
+      // PDF-preview state. Quarto emits "Output created: foo.pdf" on
+      // every recompile (often several times per recompile); the
+      // handler dedups so we don't spawn tabs on every save.
+      //
+      //  leaf:  current PDF tab, if any.
+      //  path:  the path that leaf is showing (and the path of an
+      //         in-flight open call, recorded synchronously when it
+      //         is scheduled). Also gates the webviewer-URL skip
+      //         logic on the "Browse at" branch below — when a PDF
+      //         preview is active, we don't open Quarto's PDF.js
+      //         wrapper page in the webviewer too.
+      //  busy:  a call to openOrRefreshPdfPreview is in flight.
+      //
+      // Schedule open when any of:
+      //   - leaf is detached (user closed the tab manually)
+      //   - the new output path differs from the tracked one
+      //     (multi-format project, or rename)
+      //   - we never opened in this session
+      // Skip when busy (bursts of emissions during recompile dedup
+      // automatically; the final emission of a burst wins because it
+      // arrives after busy clears).
       let pdfPreviewLeaf: WorkspaceLeaf | null = null;
       let pdfPreviewPath: string | null = null;
-      // Serialize calls to openOrRefreshPdfPreview. Quarto preview emits
-      // "Output created: foo.pdf" on every recompile, sometimes several
-      // times in quick succession; without serialization each in-flight
-      // call hits getLeaf('split', 'vertical') before the previous one
-      // updates pdfPreviewLeaf, opening multiple stacked tabs. If the
-      // user also has Obsidian's "When splitting, duplicate current
-      // note" preference on, those fresh splits briefly show the
-      // currently-edited .qmd before our openFile resolves — which is
-      // what the user reported.
-      let pdfPreviewChain: Promise<void> = Promise.resolve();
+      let pdfPreviewBusy = false;
+
+      const schedulePdfPreview = (vaultPath: string): void => {
+        if (pdfPreviewBusy) return;
+        const leafAttached = pdfPreviewLeaf?.parent != null;
+        const pathSame = pdfPreviewPath === vaultPath;
+        if (leafAttached && pathSame) return;
+
+        pdfPreviewBusy = true;
+        pdfPreviewPath = vaultPath;
+        this.openOrRefreshPdfPreview(vaultPath, pdfPreviewLeaf)
+          .then((leaf) => {
+            if (leaf) pdfPreviewLeaf = leaf;
+          })
+          .catch((err) => {
+            console.error('[qmd-as-md] PDF preview open failed:', err);
+            pdfPreviewLeaf = null;
+            pdfPreviewPath = null;
+          })
+          .finally(() => {
+            pdfPreviewBusy = false;
+          });
+      };
 
       // Same routing rule as renderPdf: Quarto's stdout/stderr split is
       // not strictly content/error, so log by line prefix instead of
@@ -322,14 +357,7 @@ export default class QmdAsMdPlugin extends Plugin {
             const outBasename = path.basename(outMatch[1].trim());
             const sourceDir = file.parent?.path ?? '';
             const vaultPath = sourceDir ? `${sourceDir}/${outBasename}` : outBasename;
-            pdfPreviewPath = vaultPath;
-            // Append to the chain so calls run strictly in order; the
-            // captured leaf ref is read fresh at the moment each call
-            // actually starts, not when the line arrived.
-            pdfPreviewChain = pdfPreviewChain.then(async () => {
-              const leaf = await this.openOrRefreshPdfPreview(vaultPath, pdfPreviewLeaf);
-              if (leaf) pdfPreviewLeaf = leaf;
-            });
+            schedulePdfPreview(vaultPath);
             continue;
           }
 
