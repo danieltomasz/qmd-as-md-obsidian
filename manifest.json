@@ -1,10 +1,10 @@
 {
   "id": "qmd-as-md-obsidian",
   "version": "0.1.0",
-  "description": "This plugin provides an initial support for viewing files with .qmd extension. QMD files contain a combination of markdown and executable code cells and are a format supported by Quarto open source publishing system.",
+  "description": "View, edit, preview and render Quarto (.qmd) files. Quarto combines Markdown with executable code cells.",
   "name": "qmd as md",
   "author": "Daniel Borek",
   "authorUrl": "https://github.com/danieltomasz",
-  "isDesktopOnly": false,
-  "minAppVersion": "0.10.12"
+  "isDesktopOnly": true,
+  "minAppVersion": "1.8.0"
 }
