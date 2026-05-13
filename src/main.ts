@@ -331,9 +331,12 @@ export default class QmdAsMdPlugin extends Plugin {
             const leafAttached = pdfPreviewLeaf?.parent != null;
             const pathSame = pdfPreviewPath === vaultPath;
             if (pdfPreviewBusy || (leafAttached && pathSame)) {
-              // Already shown, mtime watcher will refresh; or a previous
-              // call is still resolving and will land on this same path.
-              pdfPreviewPath = vaultPath;
+              // Either a previous open is still resolving (its path was
+              // recorded synchronously when it was scheduled — don't
+              // clobber it here for a different vaultPath, or the
+              // tracked state could desync from what the leaf actually
+              // shows), or the leaf is already on this path and
+              // Obsidian's mtime watcher will refresh it.
               continue;
             }
 
