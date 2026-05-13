@@ -288,48 +288,30 @@ export default class QmdAsMdPlugin extends Plugin {
 
       let previewUrl: string | null = null;
 
-      // PDF-preview state machine. Encapsulated in a closure so the
-      // semantics live in one place instead of being smeared across
-      // the log-line handler.
+      // PDF-preview tab is opened once per preview session. Quarto
+      // emits "Output created: foo.pdf" on every recompile (often
+      // several times per recompile); we ignore those after the
+      // first because Obsidian's PDF viewer reloads on file mtime
+      // change on its own.
       //
-      //  leaf:    the WorkspaceLeaf showing the current PDF, if any.
-      //  path:    the vault-relative path that leaf is showing; also
-      //           the path of an in-flight open call, recorded
-      //           synchronously when it is scheduled.
-      //  busy:    a call to openOrRefreshPdfPreview is in flight.
-      //  pending: a different path that arrived while busy, queued so
-      //           the most-recent emission wins when busy clears.
+      // We do allow one re-open if the user manually closed the tab
+      // mid-session — checked via leaf.parent. The busy flag
+      // prevents a burst of emissions from racing into multiple
+      // open calls before the first resolves.
       //
-      // Quarto preview emits "Output created: foo.pdf" on every
-      // recompile (sometimes several times per recompile), so the
-      // handler runs frequently and needs strict deduplication:
-      //
-      //  - leaf attached, path matches  -> no-op; Obsidian's PDF
-      //    viewer reloads on file mtime change on its own.
-      //  - busy, path matches the in-flight one -> no-op (it will
-      //    land on the right file shortly).
-      //  - busy, path differs -> record as pending; resolved call
-      //    drains the latest pending into a fresh schedule.
-      //  - otherwise -> schedule a fresh open/refresh.
+      // Trade-off: if Quarto switches output paths mid-session (e.g.
+      // a multi-format project producing both pdf and another format
+      // alternately), the leaf will stay on the first PDF path. Toggle
+      // the preview off+on to pick up the new path. The earlier
+      // pending-queue version handled this automatically but added
+      // state-machine complexity for a rare case.
       let pdfPreviewLeaf: WorkspaceLeaf | null = null;
       let pdfPreviewPath: string | null = null;
       let pdfPreviewBusy = false;
-      let pdfPreviewPending: string | null = null;
 
       const schedulePdfPreview = (vaultPath: string): void => {
-        const leafAttached = pdfPreviewLeaf?.parent != null;
-        const pathSame = pdfPreviewPath === vaultPath;
-
-        if (pdfPreviewBusy) {
-          // Don't clobber the in-flight call's recorded path; only
-          // queue a divergent path so the latest output wins after
-          // busy clears.
-          if (!pathSame) pdfPreviewPending = vaultPath;
-          return;
-        }
-
-        if (leafAttached && pathSame) return; // mtime watcher refreshes it
-
+        if (pdfPreviewBusy) return;
+        if (pdfPreviewLeaf?.parent != null) return; // already attached
         pdfPreviewBusy = true;
         pdfPreviewPath = vaultPath;
         this.openOrRefreshPdfPreview(vaultPath, pdfPreviewLeaf)
@@ -344,14 +326,6 @@ export default class QmdAsMdPlugin extends Plugin {
           })
           .finally(() => {
             pdfPreviewBusy = false;
-            // Drain a queued path-change that arrived while busy.
-            if (pdfPreviewPending && pdfPreviewPending !== pdfPreviewPath) {
-              const next = pdfPreviewPending;
-              pdfPreviewPending = null;
-              schedulePdfPreview(next);
-            } else {
-              pdfPreviewPending = null;
-            }
           });
       };
 
