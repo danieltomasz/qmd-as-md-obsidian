@@ -365,6 +365,18 @@ export default class QmdAsMdPlugin extends Plugin {
       quartoProcess.stdout?.on('data', (data: Buffer) => handlePreviewOutput(data.toString()));
       quartoProcess.stderr?.on('data', (data: Buffer) => handlePreviewOutput(data.toString()));
 
+      // child_process.spawn does not throw on a missing binary; it emits
+      // an 'error' event later. Without this listener an ENOENT just
+      // produced a silent "exit 1" close with no output to console.
+      quartoProcess.on('error', (err) => {
+        console.error('[qmd-as-md] Failed to spawn quarto for preview:', err);
+        new Notice(
+          `Failed to spawn '${this.settings.quartoPath}': ${err.message}. ` +
+            'Check the Quarto path setting and that Quarto is on PATH.'
+        );
+        this.activePreviewProcesses.delete(file.path);
+      });
+
       quartoProcess.on('close', (code: number | null) => {
         if (code !== null && code !== 0) {
           new Notice(`Quarto preview process exited with code ${code}`);
@@ -440,6 +452,12 @@ export default class QmdAsMdPlugin extends Plugin {
       });
 
       let detectedOutputBasename: string | null = null;
+      // Capture every line so the close handler can dump them on
+      // non-zero exit, even when emitCompilationLogs is off. Without
+      // this, a failed render only printed lines prefixed with
+      // "ERROR:" — fine when Quarto prefixes its errors, useless
+      // when typst/pandoc surface their own diagnostics.
+      const capturedLines: string[] = [];
 
       // Quarto prints progress to BOTH stdout and stderr. Most of stderr
       // is informational (typst progress, "Output created:", DONE, etc.)
@@ -449,6 +467,7 @@ export default class QmdAsMdPlugin extends Plugin {
       const handleQuartoOutput = (chunk: string) => {
         for (const line of chunk.split(/\r?\n/)) {
           if (!line) continue;
+          capturedLines.push(line);
           if (/^ERROR:/.test(line)) {
             console.error(`Quarto: ${line}`);
           } else if (this.settings.emitCompilationLogs) {
@@ -464,8 +483,25 @@ export default class QmdAsMdPlugin extends Plugin {
       quartoProcess.stdout?.on('data', (data: Buffer) => handleQuartoOutput(data.toString()));
       quartoProcess.stderr?.on('data', (data: Buffer) => handleQuartoOutput(data.toString()));
 
+      // child_process.spawn does not throw on a missing binary; it emits
+      // an 'error' event later. Without this listener an ENOENT just
+      // produced a silent "exit 1" close with no output to console.
+      quartoProcess.on('error', (err) => {
+        console.error('[qmd-as-md] Failed to spawn quarto for render:', err);
+        new Notice(
+          `Failed to spawn '${this.settings.quartoPath}': ${err.message}. ` +
+            'Check the Quarto path setting and that Quarto is on PATH.'
+        );
+      });
+
       quartoProcess.on('close', async (code: number | null) => {
         if (code !== 0) {
+          // Dump every captured line regardless of emitCompilationLogs
+          // so the user has something to read in the console.
+          console.error(
+            `[qmd-as-md] Quarto render failed (exit ${code}). Full output:\n` +
+              capturedLines.join('\n')
+          );
           new Notice(`Quarto render failed (exit ${code}). Check console.`);
           return;
         }
