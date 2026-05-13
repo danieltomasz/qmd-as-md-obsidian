@@ -377,9 +377,12 @@ export default class QmdAsMdPlugin extends Plugin {
         this.activePreviewProcesses.delete(file.path);
       });
 
-      quartoProcess.on('close', (code: number | null) => {
+      quartoProcess.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
         if (code !== null && code !== 0) {
           new Notice(`Quarto preview process exited with code ${code}`);
+        } else if (code === null && signal && signal !== 'SIGTERM' && signal !== 'SIGKILL') {
+          // SIGTERM/SIGKILL come from our own stopPreview / onunload — silent.
+          new Notice(`Quarto preview process was terminated by ${signal}`);
         }
         this.activePreviewProcesses.delete(file.path);
       });
@@ -452,12 +455,13 @@ export default class QmdAsMdPlugin extends Plugin {
       });
 
       let detectedOutputBasename: string | null = null;
-      // Capture every line so the close handler can dump them on
-      // non-zero exit, even when emitCompilationLogs is off. Without
-      // this, a failed render only printed lines prefixed with
-      // "ERROR:" — fine when Quarto prefixes its errors, useless
-      // when typst/pandoc surface their own diagnostics.
+      // Capture lines for the failure dump below. Bounded — a verbose
+      // render can produce thousands of lines and we only need recent
+      // context to diagnose a failure. Oldest lines are dropped first;
+      // if any were dropped, the dump notes that the prefix is missing.
+      const MAX_CAPTURED_LINES = 1000;
       const capturedLines: string[] = [];
+      let droppedLineCount = 0;
 
       // Quarto prints progress to BOTH stdout and stderr. Most of stderr
       // is informational (typst progress, "Output created:", DONE, etc.)
@@ -468,6 +472,10 @@ export default class QmdAsMdPlugin extends Plugin {
         for (const line of chunk.split(/\r?\n/)) {
           if (!line) continue;
           capturedLines.push(line);
+          if (capturedLines.length > MAX_CAPTURED_LINES) {
+            capturedLines.shift();
+            droppedLineCount++;
+          }
           if (/^ERROR:/.test(line)) {
             console.error(`Quarto: ${line}`);
           } else if (this.settings.emitCompilationLogs) {
@@ -494,15 +502,29 @@ export default class QmdAsMdPlugin extends Plugin {
         );
       });
 
-      quartoProcess.on('close', async (code: number | null) => {
+      quartoProcess.on('close', async (code: number | null, signal: NodeJS.Signals | null) => {
         if (code !== 0) {
-          // Dump every captured line regardless of emitCompilationLogs
-          // so the user has something to read in the console.
-          console.error(
-            `[qmd-as-md] Quarto render failed (exit ${code}). Full output:\n` +
-              capturedLines.join('\n')
-          );
-          new Notice(`Quarto render failed (exit ${code}). Check console.`);
+          const exitLabel = code !== null
+            ? `exit ${code}`
+            : signal
+              ? `terminated by ${signal}`
+              : 'terminated';
+          // Dump captured output when the per-line stream was suppressed
+          // by emitCompilationLogs=false; if it was on, the lines are
+          // already in the console and re-printing them just spams.
+          if (!this.settings.emitCompilationLogs) {
+            const prefix = droppedLineCount > 0
+              ? `… (${droppedLineCount} earlier line(s) dropped)\n`
+              : '';
+            console.error(
+              `[qmd-as-md] Quarto render failed (${exitLabel}). Output:\n` +
+                prefix +
+                capturedLines.join('\n')
+            );
+          } else {
+            console.error(`[qmd-as-md] Quarto render failed (${exitLabel}).`);
+          }
+          new Notice(`Quarto render failed (${exitLabel}). Check console.`);
           return;
         }
 
