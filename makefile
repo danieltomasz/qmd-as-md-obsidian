@@ -1,4 +1,5 @@
 SHELL := /bin/bash
+PLUGIN_ID := qmd-as-md-obsidian
 
 # macOS ships GNU Make 3.81, which predates .ONESHELL (3.82+). Recipes
 # must be `\`-joined into a single shell invocation so set -e and
@@ -47,7 +48,10 @@ help:
 	@echo "Targets:"
 	@echo "  build           Install deps, build main.js, then zip."
 	@echo "  zip             Bundle main.js + manifest.json into qmd-as-md.zip."
-	@echo "  clean           Remove node_modules and build artefacts."
+	@echo "  clean           Remove node_modules, build artefacts, release-local/."
+	@echo "  release-local   Build into release-local/$(PLUGIN_ID)/ (manifest-beta.json"
+	@echo "                  by default; STABLE=1 to use manifest.json). Folder is"
+	@echo "                  gitignored; copy it into <vault>/.obsidian/plugins/."
 	@echo "  release-beta    Publish GitHub pre-release from manifest-beta.json."
 	@echo "  release-stable  Publish GitHub release from manifest.json."
 	@echo ""
@@ -57,12 +61,46 @@ zip:
 	zip qmd-as-md.zip main.js manifest.json
 
 clean:
-	rm -rf node_modules dist build .cache *.log *.tmp
+	rm -rf node_modules dist build .cache *.log *.tmp release-local
 
 build:
 	@set -e; \
 	$(build_main_js); \
 	$(MAKE) zip
+
+# --- Local "release" for manual testing ------------------------------------
+# Build the plugin into release-local/<plugin-id>/ at the repo root. The
+# folder layout mirrors <vault>/.obsidian/plugins/<plugin-id>/ so it can
+# be copied straight in:
+#
+#   cp -R release-local/$(PLUGIN_ID) /path/to/vault/.obsidian/plugins/
+#
+# Default uses manifest-beta.json (the version under active development).
+# Pass STABLE=1 to use manifest.json instead.
+#
+#   make release-local
+#   make release-local STABLE=1
+#
+# release-local/ is git-ignored.
+
+release-local:
+	@set -e; \
+	$(build_main_js); \
+	DEST="release-local/$(PLUGIN_ID)"; \
+	rm -rf "$$DEST"; \
+	mkdir -p "$$DEST"; \
+	cp main.js "$$DEST/main.js"; \
+	if [ "$(STABLE)" = "1" ]; then \
+		echo "→ Using manifest.json (stable)"; \
+		cp manifest.json "$$DEST/manifest.json"; \
+	else \
+		echo "→ Using manifest-beta.json (beta)"; \
+		cp manifest-beta.json "$$DEST/manifest.json"; \
+	fi; \
+	[ -f styles.css ] && cp styles.css "$$DEST/styles.css" || true; \
+	echo "✓ Wrote release-local/$(PLUGIN_ID)/"; \
+	echo "  Copy to a vault with:"; \
+	echo "    cp -R release-local/$(PLUGIN_ID) /path/to/vault/.obsidian/plugins/"
 
 # --- Releases --------------------------------------------------------------
 # Publish a GitHub release whose assets BRAT (or the community store) reads.
@@ -125,4 +163,4 @@ release-stable:
 		main.js manifest.json; \
 	echo "✓ Released $$VERSION stable."
 
-.PHONY: help zip clean build release-beta release-stable
+.PHONY: help zip clean build release-local release-beta release-stable

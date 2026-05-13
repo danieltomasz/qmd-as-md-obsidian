@@ -12,6 +12,7 @@ styles.css
 *.js.map
 data.json
 release.zip
+release-local/
 _archive/
 .claude/
 .vscode/
