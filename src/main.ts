@@ -2,12 +2,14 @@ import {
   Plugin,
   Notice,
   TFile,
+  FileView,
   MarkdownView,
   PluginSettingTab,
   App,
   Setting,
   FileSystemAdapter,
   WorkspaceLeaf,
+  normalizePath,
 } from 'obsidian';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
@@ -35,38 +37,27 @@ export default class QmdAsMdPlugin extends Plugin {
   activePreviewProcesses: Map<string, ChildProcess> = new Map();
 
   async onload() {
-    console.log('Plugin is loading...');
     try {
       await this.loadSettings();
-      console.log('Settings loaded:', this.settings);
 
       if (this.settings.enableQmdLinking) {
         this.registerQmdExtension();
       }
 
       this.addSettingTab(new QmdSettingTab(this.app, this));
-      console.log('Settings tab added successfully');
 
-      this.addRibbonIcon('eye', 'Toggle Quarto Preview', async () => {
+      this.addRibbonIcon('eye', 'Toggle Quarto preview', async () => {
         const file = this.getActiveQuartoFile();
-        if (file) {
-          console.log(`Toggling preview for: ${file.path}`);
-          await this.togglePreview(file);
-        }
+        if (file) await this.togglePreview(file);
       });
-      console.log('Ribbon icon added');
 
       this.addCommand({
         id: 'toggle-quarto-preview',
-        name: 'Toggle Quarto Preview',
+        name: 'Toggle Quarto preview',
         callback: async () => {
           const file = this.getActiveQuartoFile();
-          if (file) {
-            console.log(`Command: Toggling preview for ${file.path}`);
-            await this.togglePreview(file);
-          }
+          if (file) await this.togglePreview(file);
         },
-        hotkeys: [{ modifiers: ['Ctrl', 'Shift'], key: 'p' }],
       });
 
       this.addRibbonIcon('file-output', 'Render Quarto to PDF', async () => {
@@ -77,18 +68,13 @@ export default class QmdAsMdPlugin extends Plugin {
       this.registerRenderCommand('render-quarto-pdf', 'Render Quarto (use YAML format)');
       this.registerRenderCommand('render-quarto-pdf-typst', 'Render Quarto to PDF (Typst engine)', 'typst');
       this.registerRenderCommand('render-quarto-pdf-latex', 'Render Quarto to PDF (LaTeX engine)', 'pdf');
-
-      console.log('Commands added');
     } catch (error) {
       console.error('Error loading plugin:', error);
-      new Notice(
-        'Failed to load QmdAsMdPlugin. Check the developer console for details.'
-      );
+      new Notice('Failed to load the QMD as md plugin. Check the developer console for details.');
     }
   }
 
   onunload() {
-    console.log('Plugin is unloading...');
     this.stopAllPreviews();
   }
 
@@ -126,6 +112,13 @@ export default class QmdAsMdPlugin extends Plugin {
     return qmdFile.path.replace(/\.qmd$/i, '.pdf');
   }
 
+  // Pull the TFile a leaf currently shows, without resorting to
+  // `as any`. The built-in PDF view (and most file-backed views)
+  // extend FileView, which exposes a typed `file: TFile | null`.
+  private leafFile(leaf: WorkspaceLeaf): TFile | null {
+    return leaf.view instanceof FileView ? leaf.view.file : null;
+  }
+
   // Open (or reuse) a leaf showing the given vault-relative PDF path in
   // Obsidian's native PDF viewer. Returns the leaf so callers can keep
   // refreshing it on subsequent preview compiles.
@@ -152,14 +145,14 @@ export default class QmdAsMdPlugin extends Plugin {
           ? existingLeaf
           : this.app.workspace
               .getLeavesOfType('pdf')
-              .find((l) => (l.view as any)?.file?.path === pdfTFile.path) ?? null;
+              .find((l) => this.leafFile(l)?.path === pdfTFile.path) ?? null;
       const leaf = reusable ?? this.app.workspace.getLeaf('split', 'vertical');
       // Skip the openFile call when the leaf already shows this file —
       // calling openFile in that case is harmless for the file display
       // but still triggers a reveal/focus shuffle the user does not want.
       // Obsidian's PDF viewer picks up the file rewrite via its own
       // mtime watcher, so live reload still works without our help.
-      const currentFile = (leaf.view as any)?.file;
+      const currentFile = this.leafFile(leaf);
       if (!currentFile || currentFile.path !== pdfTFile.path) {
         await leaf.openFile(pdfTFile, { active: false });
       }
@@ -178,7 +171,8 @@ export default class QmdAsMdPlugin extends Plugin {
     if (!this.settings.previewInObsidian) {
       // Electron's renderer routes window.open for http(s) URLs through
       // shell.openExternal, which lands in the user's default browser.
-      window.open(url, '_blank');
+      // Use activeWindow so popout windows resolve to the correct one.
+      activeWindow.open(url, '_blank');
       return;
     }
 
@@ -216,9 +210,9 @@ export default class QmdAsMdPlugin extends Plugin {
     } catch (err) {
       console.error('[qmd-as-md] Failed to open preview in webviewer:', err);
       new Notice(
-        `Could not open preview in Obsidian's web viewer. Falling back to external browser.`
+        "Could not open preview in Obsidian's web viewer. Falling back to external browser."
       );
-      window.open(url, '_blank');
+      activeWindow.open(url, '_blank');
     }
   }
 
@@ -235,9 +229,7 @@ export default class QmdAsMdPlugin extends Plugin {
   }
 
   registerQmdExtension() {
-    console.log('Registering .qmd as markdown...');
     this.registerExtensions(['qmd'], 'markdown');
-    console.log('.qmd registered as markdown');
   }
 
   async togglePreview(file: TFile) {
@@ -250,8 +242,7 @@ export default class QmdAsMdPlugin extends Plugin {
 
   async startPreview(file: TFile) {
     if (this.activePreviewProcesses.has(file.path)) {
-      console.log(`Preview already running for: ${file.path}`);
-      return; // Preview already running
+      return; // Preview already running for this file.
     }
 
     try {
@@ -264,16 +255,9 @@ export default class QmdAsMdPlugin extends Plugin {
       if (!filePath) return;
       const workingDir = path.dirname(filePath);
 
-      console.log(`Resolved file path: ${filePath}`);
-      console.log(`Working directory: ${workingDir}`);
-
-      const envVars: NodeJS.ProcessEnv = {
-        ...process.env,
-      };
-
+      const envVars: NodeJS.ProcessEnv = { ...process.env };
       if (this.settings.quartoTypst.trim()) {
         envVars.QUARTO_TYPST = this.settings.quartoTypst.trim();
-        console.log(`QUARTO_TYPST set to: ${envVars.QUARTO_TYPST}`);
       }
 
       // --no-browse stops Quarto from auto-opening the preview URL in
@@ -356,7 +340,7 @@ export default class QmdAsMdPlugin extends Plugin {
           if (outMatch && /\.pdf$/i.test(outMatch[1].trim()) && this.settings.previewInObsidian) {
             const outBasename = path.basename(outMatch[1].trim());
             const sourceDir = file.parent?.path ?? '';
-            const vaultPath = sourceDir ? `${sourceDir}/${outBasename}` : outBasename;
+            const vaultPath = normalizePath(sourceDir ? `${sourceDir}/${outBasename}` : outBasename);
             schedulePdfPreview(vaultPath);
             continue;
           }
@@ -445,7 +429,7 @@ export default class QmdAsMdPlugin extends Plugin {
       const guessedPdfPath = this.pdfPathFor(file);
       const existingLeaf = this.app.workspace
         .getLeavesOfType('pdf')
-        .find((l) => (l.view as any)?.file?.path === guessedPdfPath);
+        .find((l) => this.leafFile(l)?.path === guessedPdfPath);
 
       const args = ['render', filePath];
       if (toFormat) args.push('--to', toFormat);
@@ -487,9 +471,11 @@ export default class QmdAsMdPlugin extends Plugin {
         }
 
         const sourceDir = file.parent?.path ?? '';
-        const outputVaultPath = detectedOutputBasename
-          ? (sourceDir ? `${sourceDir}/${detectedOutputBasename}` : detectedOutputBasename)
-          : guessedPdfPath;
+        const outputVaultPath = normalizePath(
+          detectedOutputBasename
+            ? (sourceDir ? `${sourceDir}/${detectedOutputBasename}` : detectedOutputBasename)
+            : guessedPdfPath
+        );
 
         const outputTFile = await this.waitForVaultFile(outputVaultPath);
 
@@ -536,7 +522,7 @@ export default class QmdAsMdPlugin extends Plugin {
     while (Date.now() - start < timeoutMs) {
       const f = this.app.vault.getAbstractFileByPath(vaultPath);
       if (f instanceof TFile) return f;
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => activeWindow.setTimeout(r, 200));
     }
     return null;
   }
@@ -554,79 +540,70 @@ class QmdSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    console.log('Rendering settings tab...');
-
-    containerEl.createEl('h2', { text: 'Quarto Preview Settings' });
-
     new Setting(containerEl)
-      .setName('Quarto Path')
-      .setDesc('Path to Quarto executable (e.g., quarto, /usr/local/bin/quarto)')
+      .setName('Quarto path')
+      .setDesc('Path to the Quarto executable (e.g. quarto, /usr/local/bin/quarto)')
       .addText((text) =>
         text
           .setPlaceholder('quarto')
           .setValue(this.plugin.settings.quartoPath)
           .onChange(async (value) => {
-            console.log(`Quarto path changed to: ${value}`);
             this.plugin.settings.quartoPath = value;
             await this.plugin.saveSettings();
           })
       );
 
     new Setting(containerEl)
-      .setName('Enable Editing Quarto Files')
+      .setName('Enable editing Quarto files')
       .setDesc(
-        'By default, plugin allows editing .qmd files. Disable this feature if there is a conflict with .qmd editing enabled by another plugin'
+        'When on, .qmd files open in the Markdown editor. Turn off if another plugin handles .qmd editing.'
       )
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.enableQmdLinking)
           .onChange(async (value) => {
-            console.log(`Enable QMD Editing setting changed to: ${value}`);
             this.plugin.settings.enableQmdLinking = value;
-
             if (value) {
               this.plugin.registerQmdExtension();
             }
+            await this.plugin.saveSettings();
           })
       );
 
     new Setting(containerEl)
-      .setName('QUARTO_TYPST Variable')
-      .setDesc('Define the QUARTO_TYPST environment variable (leave empty to unset)')
+      .setName('QUARTO_TYPST variable')
+      .setDesc('Value for the QUARTO_TYPST environment variable (leave empty to unset).')
       .addText((text) =>
         text
-          .setPlaceholder('e.g., typst_path')
+          .setPlaceholder('e.g. typst_path')
           .setValue(this.plugin.settings.quartoTypst)
           .onChange(async (value) => {
-            console.log(`QUARTO_TYPST set to: ${value}`);
             this.plugin.settings.quartoTypst = value;
             await this.plugin.saveSettings();
           })
       );
 
     new Setting(containerEl)
-      .setName('Emit Compilation Logs')
-      .setDesc('Toggle whether to emit detailed compilation logs in the console')
+      .setName('Emit compilation logs')
+      .setDesc('Print detailed Quarto compilation output to the developer console.')
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.emitCompilationLogs)
           .onChange(async (value) => {
-            console.log(`Emit Compilation Logs set to: ${value}`);
             this.plugin.settings.emitCompilationLogs = value;
             await this.plugin.saveSettings();
           })
       );
 
     new Setting(containerEl)
-      .setName('Open Compiled PDF in Obsidian')
+      .setName('Open compiled PDF in Obsidian')
       .setDesc(
-        'When rendering to PDF, open the resulting file inside Obsidian using the built-in PDF viewer. The .qmd source must live in the vault so the rendered PDF is accessible.'
+        "When rendering to PDF, open the resulting file inside Obsidian using the built-in PDF viewer. The .qmd source must live in the vault so the rendered PDF is accessible."
       )
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.openPdfInObsidian)
           .onChange(async (value) => {
-            console.log(`Open PDF in Obsidian set to: ${value}`);
             this.plugin.settings.openPdfInObsidian = value;
             await this.plugin.saveSettings();
           })
@@ -635,22 +612,19 @@ class QmdSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('Open Quarto preview in Obsidian')
       .setDesc(
-        'When on: PDF previews (format: typst / pdf) open in Obsidian\'s native PDF viewer; ' +
-          'non-PDF previews (HTML, etc.) open in Obsidian 1.8\'s built-in web viewer ' +
+        "When on: PDF previews (format: typst / pdf) open in Obsidian's native PDF viewer; " +
+          "non-PDF previews (HTML, etc.) open in Obsidian 1.8's built-in web viewer " +
           '(requires the "Web viewer" core plugin enabled in Settings → Core plugins). ' +
-          'Live reload from the running quarto preview is preserved in both cases. ' +
+          'Live reload from the running Quarto preview is preserved in both cases. ' +
           'When off, the preview URL opens in your default external browser instead.'
       )
       .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.previewInObsidian)
           .onChange(async (value) => {
-            console.log(`Preview in Obsidian set to: ${value}`);
             this.plugin.settings.previewInObsidian = value;
             await this.plugin.saveSettings();
           })
       );
-
-    console.log('Settings tab rendered successfully');
   }
 }
