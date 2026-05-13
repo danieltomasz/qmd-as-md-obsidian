@@ -287,16 +287,23 @@ export default class QmdAsMdPlugin extends Plugin {
       );
 
       let previewUrl: string | null = null;
-      let pdfPreviewPath: string | null = null;
-      // Open the PDF tab once per preview session. Quarto preview emits
+      // Track the open PDF leaf, the path it shows, and whether a call
+      // to openOrRefreshPdfPreview is in flight. Quarto preview emits
       // "Output created: foo.pdf" on every recompile (and sometimes
-      // multiple times per recompile). Reacting to every emission
-      // caused stacked tabs; serializing helped but did not fully
-      // prevent it under Obsidian's "When splitting, duplicate current
-      // note" preference. Obsidian's PDF viewer reloads on file mtime
-      // change on its own, so we only need to open the leaf the first
-      // time and let Obsidian's watcher handle live reload thereafter.
-      let pdfPreviewOpened = false;
+      // multiple times per recompile), so the handler runs frequently:
+      //
+      //  - If the leaf is still attached and showing the same path, do
+      //    nothing — Obsidian's PDF viewer reloads on file mtime change
+      //    on its own, no plugin action needed.
+      //  - If the user closed the leaf, or Quarto switched output paths
+      //    (multi-format projects), allow the helper to (re)open.
+      //  - The busy flag dedups concurrent calls so a burst of emissions
+      //    never opens more than one tab; if a save races in while the
+      //    first call is awaiting waitForVaultFile / openFile, the
+      //    second emission is dropped.
+      let pdfPreviewLeaf: WorkspaceLeaf | null = null;
+      let pdfPreviewPath: string | null = null;
+      let pdfPreviewBusy = false;
 
       // Same routing rule as renderPdf: Quarto's stdout/stderr split is
       // not strictly content/error, so log by line prefix instead of
@@ -320,17 +327,31 @@ export default class QmdAsMdPlugin extends Plugin {
             const outBasename = path.basename(outMatch[1].trim());
             const sourceDir = file.parent?.path ?? '';
             const vaultPath = sourceDir ? `${sourceDir}/${outBasename}` : outBasename;
-            pdfPreviewPath = vaultPath;
-            if (!pdfPreviewOpened) {
-              pdfPreviewOpened = true;
-              // Fire-and-forget; openOrRefreshPdfPreview's lookup will
-              // reuse any pre-existing PDF leaf showing this file.
-              this.openOrRefreshPdfPreview(vaultPath, null).catch((err) => {
-                console.error('[qmd-as-md] PDF preview open failed:', err);
-                // Allow a retry on the next compile if this one threw.
-                pdfPreviewOpened = false;
-              });
+
+            const leafAttached = pdfPreviewLeaf?.parent != null;
+            const pathSame = pdfPreviewPath === vaultPath;
+            if (pdfPreviewBusy || (leafAttached && pathSame)) {
+              // Already shown, mtime watcher will refresh; or a previous
+              // call is still resolving and will land on this same path.
+              pdfPreviewPath = vaultPath;
+              continue;
             }
+
+            pdfPreviewBusy = true;
+            pdfPreviewPath = vaultPath;
+            this.openOrRefreshPdfPreview(vaultPath, pdfPreviewLeaf)
+              .then((leaf) => {
+                if (leaf) pdfPreviewLeaf = leaf;
+              })
+              .catch((err) => {
+                console.error('[qmd-as-md] PDF preview open failed:', err);
+                // Clear state so the next emission can retry cleanly.
+                pdfPreviewLeaf = null;
+                pdfPreviewPath = null;
+              })
+              .finally(() => {
+                pdfPreviewBusy = false;
+              });
             continue;
           }
 
