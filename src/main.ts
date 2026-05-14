@@ -18,7 +18,8 @@ import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { shell } from 'electron';
 import { EditorState, RangeSetBuilder, StateField, Text } from '@codemirror/state';
-import { Decoration, DecorationSet, EditorView } from '@codemirror/view';
+import { Decoration, DecorationSet, EditorView, keymap } from '@codemirror/view';
+import { indentMore, indentLess } from '@codemirror/commands';
 
 // --- Quarto output plumbing -----------------------------------------------
 //
@@ -1243,14 +1244,10 @@ class QmdYamlView extends TextFileView {
             autocomplete: 'off',
             spellcheck: 'false',
           }),
-          EditorView.domEventHandlers({
-            keydown: (evt, view) => {
-              if (evt.key !== 'Tab') return false;
-              evt.preventDefault();
-              view.dispatch(view.state.replaceSelection('  '));
-              return true;
-            },
-          }),
+          keymap.of([
+            { key: 'Tab', run: indentMore },
+            { key: 'Shift-Tab', run: indentLess },
+          ]),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged || this.settingViewData) return;
             this.data = update.state.doc.toString();
