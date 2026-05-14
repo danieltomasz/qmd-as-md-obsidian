@@ -144,6 +144,11 @@ const DEFAULT_SETTINGS: QmdPluginSettings = {
 export default class QmdAsMdPlugin extends Plugin {
   settings: QmdPluginSettings;
   activePreviewProcesses: Map<string, ChildProcess> = new Map();
+  // The .qmd file the outline should describe. Tracked separately from the
+  // active leaf: clicking inside the outline sidebar makes *it* the active
+  // leaf, so the outline must remember the last real .qmd rather than ask
+  // "what is active now?" each render.
+  lastActiveQuartoFile: TFile | null = null;
 
   async onload() {
     try {
@@ -188,7 +193,10 @@ export default class QmdAsMdPlugin extends Plugin {
 
       // Keep any open outline view in sync with the focused file and its
       // edits. Debounced so a burst of keystrokes re-parses once it settles.
-      const refresh = debounce(() => this.refreshOutlineViews(), 250, true);
+      const refresh = debounce(() => {
+        this.trackActiveQuartoFile();
+        this.refreshOutlineViews();
+      }, 250, true);
       this.registerEvent(this.app.workspace.on('active-leaf-change', refresh));
       this.registerEvent(this.app.workspace.on('editor-change', refresh));
 
@@ -365,12 +373,27 @@ export default class QmdAsMdPlugin extends Plugin {
   // outline leaf if one is already open.
   async activateOutlineView(): Promise<void> {
     const { workspace } = this.app;
+    // Capture the current .qmd before opening the outline — setViewState
+    // with active:true makes the outline the active leaf, after which the
+    // active markdown view is gone.
+    this.trackActiveQuartoFile();
     let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(QMD_OUTLINE_VIEW)[0] ?? null;
     if (!leaf) {
       leaf = workspace.getRightLeaf(false);
       await leaf?.setViewState({ type: QMD_OUTLINE_VIEW, active: true });
     }
     if (leaf) workspace.revealLeaf(leaf);
+    this.refreshOutlineViews();
+  }
+
+  // Remember the active .qmd file. Called whenever the active leaf changes;
+  // a non-.qmd active leaf (including the outline sidebar itself) leaves the
+  // last value untouched so the outline keeps describing that file.
+  trackActiveQuartoFile(): void {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (view?.file && this.isQuartoFile(view.file)) {
+      this.lastActiveQuartoFile = view.file;
+    }
   }
 
   // Re-render every open outline view. No-op when none are open.
@@ -786,7 +809,21 @@ class QmdOutlineView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    // The outline may already be the active leaf at this point (opened via
+    // command/setting), so capture the underlying .qmd before rendering.
+    this.plugin.trackActiveQuartoFile();
     this.render();
+  }
+
+  // Find the open markdown view for a file, regardless of which leaf is
+  // active. .qmd files open as 'markdown' leaves (registerExtensions).
+  private markdownViewFor(file: TFile): MarkdownView | null {
+    for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+      if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
+        return leaf.view;
+      }
+    }
+    return null;
   }
 
   render(): void {
@@ -794,12 +831,22 @@ class QmdOutlineView extends ItemView {
     container.empty();
     container.addClass('qmd-outline');
 
-    const mdView = this.app.workspace.getActiveViewOfType(MarkdownView);
-    const file = mdView?.file;
-    if (!mdView || !file || !this.plugin.isQuartoFile(file)) {
+    const file = this.plugin.lastActiveQuartoFile;
+    if (!file) {
       container.createDiv({
         cls: 'qmd-outline-empty',
         text: 'No Quarto (.qmd) file is active.',
+      });
+      return;
+    }
+
+    // Read live content from the open editor rather than the active leaf —
+    // clicking inside this sidebar makes it the active leaf.
+    const mdView = this.markdownViewFor(file);
+    if (!mdView) {
+      container.createDiv({
+        cls: 'qmd-outline-empty',
+        text: `Open ${file.name} to see its outline.`,
       });
       return;
     }
@@ -826,14 +873,15 @@ class QmdOutlineView extends ItemView {
       item.dataset.level = String(heading.level);
 
       const jumpTo = () => {
-        const target = this.app.workspace.getActiveViewOfType(MarkdownView);
-        // The active file can change between render and activation; only
-        // jump when the same file is still focused.
-        if (!target || target.file?.path !== file.path) return;
+        // Resolve the editor by file, not by "active leaf" — the click
+        // itself just moved focus to this sidebar.
+        const view = this.markdownViewFor(file);
+        if (!view) return;
         const pos = { line: heading.line, ch: 0 };
-        target.editor.setCursor(pos);
-        target.editor.scrollIntoView({ from: pos, to: pos }, true);
-        target.editor.focus();
+        this.app.workspace.setActiveLeaf(view.leaf, { focus: true });
+        view.editor.setCursor(pos);
+        view.editor.scrollIntoView({ from: pos, to: pos }, true);
+        view.editor.focus();
       };
 
       item.addEventListener('click', jumpTo);
