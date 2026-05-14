@@ -14,11 +14,60 @@ import {
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 
+// --- Quarto output plumbing -----------------------------------------------
+//
+// Node's spawn-stream chunks don't align with line boundaries — a single
+// data event can contain a partial line, and a logical line can be split
+// across two events. Build a per-stream processor that buffers the
+// trailing partial line and only emits whole lines. Call .flush() on the
+// close handler to release any final partial line.
+//
+// logQuartoLine routes a single line to console by severity prefix:
+// "ERROR:" -> console.error, "WARNING:"/"WARN:" -> console.warn,
+// everything else -> console.log. Centralised so both the preview and
+// render paths stay in sync and new prefixes only need handling here.
+
+function logQuartoLine(prefix: string, line: string): void {
+  if (/^ERROR:/.test(line)) {
+    console.error(`${prefix}: ${line}`);
+  } else if (/^WARN(ING)?:/.test(line)) {
+    console.warn(`${prefix}: ${line}`);
+  } else {
+    console.log(`${prefix}: ${line}`);
+  }
+}
+
+interface LineProcessor {
+  (chunk: string): void;
+  flush(): void;
+}
+
+function makeLineProcessor(handle: (line: string) => void): LineProcessor {
+  let buffer = '';
+  const proc = ((chunk: string) => {
+    buffer += chunk;
+    const lines = buffer.split(/\r?\n/);
+    // Last element is the trailing fragment after the final newline
+    // (or the whole chunk if there was no newline at all). Keep it
+    // for the next chunk.
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (line) handle(line);
+    }
+  }) as LineProcessor;
+  proc.flush = () => {
+    if (buffer) {
+      handle(buffer);
+      buffer = '';
+    }
+  };
+  return proc;
+}
+
 interface QmdPluginSettings {
   quartoPath: string;
   enableQmdLinking: boolean;
   quartoTypst: string;
-  emitCompilationLogs: boolean;
   openPdfInObsidian: boolean;
   previewInObsidian: boolean;
 }
@@ -27,7 +76,6 @@ const DEFAULT_SETTINGS: QmdPluginSettings = {
   quartoPath: 'quarto',
   enableQmdLinking: true,
   quartoTypst: '',
-  emitCompilationLogs: true,
   openPdfInObsidian: false,
   previewInObsidian: true,
 };
@@ -319,51 +367,48 @@ export default class QmdAsMdPlugin extends Plugin {
           });
       };
 
-      // Same routing rule as renderPdf: Quarto's stdout/stderr split is
-      // not strictly content/error, so log by line prefix instead of
-      // by stream. Only "ERROR:"-prefixed lines hit console.error.
-      const handlePreviewOutput = (chunk: string) => {
-        for (const line of chunk.split(/\r?\n/)) {
-          if (!line) continue;
-          if (/^ERROR:/.test(line)) {
-            console.error(`Quarto Preview: ${line}`);
-          } else if (this.settings.emitCompilationLogs) {
-            console.log(`Quarto Preview: ${line}`);
-          }
+      // Per-line handler: log the line, then look for the two markers
+      // we care about ("Output created:" and "Browse at").
+      const handlePreviewLine = (line: string) => {
+        logQuartoLine('Quarto Preview', line);
 
-          // Detect "Output created: <path>" — quarto prints this on every
-          // compile in preview mode. If the output is a PDF, route to
-          // Obsidian's native PDF viewer rather than the webviewer page
-          // Quarto serves at /web/viewer.html. Subsequent compiles refresh
-          // the same leaf so live reload still works.
-          const outMatch = line.match(/Output created:\s*(.+?)\s*$/);
-          if (outMatch && /\.pdf$/i.test(outMatch[1].trim()) && this.settings.previewInObsidian) {
-            const outBasename = path.basename(outMatch[1].trim());
-            const sourceDir = file.parent?.path ?? '';
-            const vaultPath = normalizePath(sourceDir ? `${sourceDir}/${outBasename}` : outBasename);
-            schedulePdfPreview(vaultPath);
-            continue;
-          }
+        // Detect "Output created: <path>" — quarto prints this on every
+        // compile in preview mode. If the output is a PDF, route to
+        // Obsidian's native PDF viewer rather than the webviewer page
+        // Quarto serves at /web/viewer.html. Subsequent compiles refresh
+        // the same leaf so live reload still works.
+        const outMatch = line.match(/Output created:\s*(.+?)\s*$/);
+        if (outMatch && /\.pdf$/i.test(outMatch[1].trim()) && this.settings.previewInObsidian) {
+          const outBasename = path.basename(outMatch[1].trim());
+          const sourceDir = file.parent?.path ?? '';
+          const vaultPath = normalizePath(sourceDir ? `${sourceDir}/${outBasename}` : outBasename);
+          schedulePdfPreview(vaultPath);
+          return;
+        }
 
-          if (!previewUrl && line.includes('Browse at')) {
-            const match = line.match(/Browse at\s+(http:\/\/[^\s]+)/);
-            if (match && match[1]) {
-              previewUrl = match[1];
-              // If we already opened a native PDF preview, skip the
-              // webviewer URL — Quarto's PDF.js wrapper would just be
-              // a worse version of the same content.
-              if (pdfPreviewPath) {
-                new Notice(`PDF preview opened natively. Server URL: ${previewUrl}`);
-              } else {
-                this.openPreviewUrl(previewUrl);
-              }
+        if (!previewUrl && line.includes('Browse at')) {
+          const match = line.match(/Browse at\s+(http:\/\/[^\s]+)/);
+          if (match && match[1]) {
+            previewUrl = match[1];
+            // If we already opened a native PDF preview, skip the
+            // webviewer URL — Quarto's PDF.js wrapper would just be
+            // a worse version of the same content.
+            if (pdfPreviewPath) {
+              new Notice(`PDF preview opened natively. Server URL: ${previewUrl}`);
+            } else {
+              this.openPreviewUrl(previewUrl);
             }
           }
         }
       };
 
-      quartoProcess.stdout?.on('data', (data: Buffer) => handlePreviewOutput(data.toString()));
-      quartoProcess.stderr?.on('data', (data: Buffer) => handlePreviewOutput(data.toString()));
+      // One buffered processor per stream — stdout and stderr each
+      // need their own partial-line buffer, or interleaved fragments
+      // from the two streams would be spliced into synthetic lines.
+      const previewStdout = makeLineProcessor(handlePreviewLine);
+      const previewStderr = makeLineProcessor(handlePreviewLine);
+      quartoProcess.stdout?.on('data', (data: Buffer) => previewStdout(data.toString()));
+      quartoProcess.stderr?.on('data', (data: Buffer) => previewStderr(data.toString()));
 
       // child_process.spawn does not throw on a missing binary; it emits
       // an 'error' event later. Without this listener an ENOENT just
@@ -377,9 +422,14 @@ export default class QmdAsMdPlugin extends Plugin {
         this.activePreviewProcesses.delete(file.path);
       });
 
-      quartoProcess.on('close', (code: number | null) => {
+      quartoProcess.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+        previewStdout.flush(); // release any final partial line
+        previewStderr.flush();
         if (code !== null && code !== 0) {
           new Notice(`Quarto preview process exited with code ${code}`);
+        } else if (code === null && signal && signal !== 'SIGTERM' && signal !== 'SIGKILL') {
+          // SIGTERM/SIGKILL come from our own stopPreview / onunload — silent.
+          new Notice(`Quarto preview process was terminated by ${signal}`);
         }
         this.activePreviewProcesses.delete(file.path);
       });
@@ -452,36 +502,23 @@ export default class QmdAsMdPlugin extends Plugin {
       });
 
       let detectedOutputBasename: string | null = null;
-      // Capture every line so the close handler can dump them on
-      // non-zero exit, even when emitCompilationLogs is off. Without
-      // this, a failed render only printed lines prefixed with
-      // "ERROR:" — fine when Quarto prefixes its errors, useless
-      // when typst/pandoc surface their own diagnostics.
-      const capturedLines: string[] = [];
 
-      // Quarto prints progress to BOTH stdout and stderr. Most of stderr
-      // is informational (typst progress, "Output created:", DONE, etc.)
-      // Only lines prefixed with "ERROR:" are real errors; logging the
-      // rest via console.error surfaced harmless lines as red error
-      // toasts in Obsidian. Route by content, not by stream.
-      const handleQuartoOutput = (chunk: string) => {
-        for (const line of chunk.split(/\r?\n/)) {
-          if (!line) continue;
-          capturedLines.push(line);
-          if (/^ERROR:/.test(line)) {
-            console.error(`Quarto: ${line}`);
-          } else if (this.settings.emitCompilationLogs) {
-            console.log(`Quarto: ${line}`);
-          }
-          const match = line.match(/Output created:\s*(.+?)\s*$/);
-          if (match) {
-            detectedOutputBasename = path.basename(match[1].trim());
-          }
+      // Per-line handler: log the line, then watch for "Output created:".
+      const handleRenderLine = (line: string) => {
+        logQuartoLine('Quarto', line);
+        const match = line.match(/Output created:\s*(.+?)\s*$/);
+        if (match) {
+          detectedOutputBasename = path.basename(match[1].trim());
         }
       };
 
-      quartoProcess.stdout?.on('data', (data: Buffer) => handleQuartoOutput(data.toString()));
-      quartoProcess.stderr?.on('data', (data: Buffer) => handleQuartoOutput(data.toString()));
+      // One buffered processor per stream — stdout and stderr each
+      // need their own partial-line buffer, or interleaved fragments
+      // from the two streams would be spliced into synthetic lines.
+      const renderStdout = makeLineProcessor(handleRenderLine);
+      const renderStderr = makeLineProcessor(handleRenderLine);
+      quartoProcess.stdout?.on('data', (data: Buffer) => renderStdout(data.toString()));
+      quartoProcess.stderr?.on('data', (data: Buffer) => renderStderr(data.toString()));
 
       // child_process.spawn does not throw on a missing binary; it emits
       // an 'error' event later. Without this listener an ENOENT just
@@ -494,15 +531,30 @@ export default class QmdAsMdPlugin extends Plugin {
         );
       });
 
-      quartoProcess.on('close', async (code: number | null) => {
-        if (code !== 0) {
-          // Dump every captured line regardless of emitCompilationLogs
-          // so the user has something to read in the console.
-          console.error(
-            `[qmd-as-md] Quarto render failed (exit ${code}). Full output:\n` +
-              capturedLines.join('\n')
-          );
-          new Notice(`Quarto render failed (exit ${code}). Check console.`);
+      quartoProcess.on('close', async (code: number | null, signal: NodeJS.Signals | null) => {
+        renderStdout.flush(); // release any final partial line
+        renderStderr.flush();
+
+        // A clean exit is code 0. Anything else is a failure, except a
+        // termination by SIGTERM/SIGKILL — that means the process was
+        // intentionally cancelled (matching the preview handler, which
+        // suppresses notices for those signals). Stay quiet then.
+        if (code === 0) {
+          // fall through to the success path below
+        } else if (code === null && (signal === 'SIGTERM' || signal === 'SIGKILL')) {
+          console.error(`[qmd-as-md] Quarto render cancelled (${signal}).`);
+          return;
+        } else {
+          const exitLabel = code !== null
+            ? `exit ${code}`
+            : signal
+              ? `terminated by ${signal}`
+              : 'terminated';
+          // The full output was already streamed line-by-line through
+          // console.log / console.error as it arrived — no need to
+          // re-dump it. Just summarise the failure.
+          console.error(`[qmd-as-md] Quarto render failed (${exitLabel}).`);
+          new Notice(`Quarto render failed (${exitLabel}). Check console.`);
           return;
         }
 
@@ -615,18 +667,6 @@ class QmdSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.quartoTypst)
           .onChange(async (value) => {
             this.plugin.settings.quartoTypst = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName('Emit compilation logs')
-      .setDesc('Print detailed Quarto compilation output to the developer console.')
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.emitCompilationLogs)
-          .onChange(async (value) => {
-            this.plugin.settings.emitCompilationLogs = value;
             await this.plugin.saveSettings();
           })
       );
