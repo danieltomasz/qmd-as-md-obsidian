@@ -46,16 +46,16 @@
 .qmd-outline-item[data-level='5'] { padding-left: calc(var(--size-4-3) + var(--size-4-4) * 4); }
 .qmd-outline-item[data-level='6'] { padding-left: calc(var(--size-4-3) + var(--size-4-4) * 5); }
 
-/* YAML editor view (QmdYamlView) */
+/* Code editor views (QmdCodeFileView — YAML and Lua files) */
 
-.qmd-yaml-view {
+.qmd-code-view {
   height: 100%;
   padding: 0;
   overflow: hidden;
   background: var(--background-primary);
 }
 
-.qmd-yaml-view .cm-editor {
+.qmd-code-view .cm-editor {
   height: 100%;
   background: var(--background-primary);
   color: var(--text-normal);
@@ -65,24 +65,24 @@
   outline: none;
 }
 
-.qmd-yaml-view .cm-scroller {
+.qmd-code-view .cm-scroller {
   font-family: var(--font-monospace);
   font-size: var(--font-ui-small);
   line-height: var(--line-height-tight);
 }
 
-.qmd-yaml-view .cm-content {
+.qmd-code-view .cm-content {
   min-height: 100%;
   padding: var(--size-4-4);
   caret-color: var(--text-normal);
   tab-size: 2;
 }
 
-.qmd-yaml-view .cm-focused {
+.qmd-code-view .cm-focused {
   box-shadow: inset 0 0 0 2px var(--interactive-accent);
 }
 
-.qmd-yaml-view .cm-selectionBackground {
+.qmd-code-view .cm-selectionBackground {
   background: var(--text-selection) !important;
 }
 
@@ -117,4 +117,24 @@
 
 .qmd-yaml-scalar {
   color: var(--text-normal);
+}
+
+/* Lua editor view tokens */
+
+.qmd-lua-keyword {
+  color: var(--text-accent);
+  font-weight: 600;
+}
+
+.qmd-lua-string {
+  color: var(--interactive-accent);
+}
+
+.qmd-lua-number {
+  color: var(--interactive-accent);
+}
+
+.qmd-lua-comment {
+  color: var(--text-muted);
+  font-style: italic;
 }

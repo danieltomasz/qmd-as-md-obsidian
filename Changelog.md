@@ -2,6 +2,24 @@
 
 All notable changes to **QMD as Markdown** are documented here. Pre-release versions (`-rc.x`, `-beta.x`) are distributed only via [BRAT](https://github.com/TfTHacker/obsidian42-brat); stable releases go to the Obsidian community plugin store.
 
+## 0.3.2
+
+### Added
+
+- **Lua file view.** New **Show Lua files** setting (off by default). When
+  enabled, `.lua` files open in a dedicated CodeMirror editor with minimal
+  Lua syntax highlighting — comments, strings, numbers, keywords — handy
+  for editing Quarto/pandoc filter scripts. Turn off and reload to hide
+  them again.
+
+### Notes
+
+- One such filter: [obsidian-callouts.lua][callouts-filter] renders
+  Obsidian / GitHub-style callouts (`> [!note]`) as native Quarto callouts.
+  Drop it next to your `_quarto.yml` and add it under `filters:`.
+
+[callouts-filter]: https://gist.github.com/danieltomasz/31d298aca2969adaf60d8841b68005e2
+
 ## 0.3.1
 
 ### Changed

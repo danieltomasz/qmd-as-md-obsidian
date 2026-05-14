@@ -94,6 +94,7 @@ function previewUrlFromLine(line: string): string | null {
 
 const QMD_OUTLINE_VIEW = 'qmd-outline-view';
 const QMD_YAML_VIEW = 'qmd-yaml-view';
+const QMD_LUA_VIEW = 'qmd-lua-view';
 
 interface QmdHeading {
   level: number;
@@ -159,6 +160,7 @@ interface QmdPluginSettings {
   previewInObsidian: boolean;
   previewMarkdownFiles: boolean;
   showYamlFiles: boolean;
+  showLuaFiles: boolean;
   showOutline: boolean;
 }
 
@@ -177,6 +179,7 @@ const DEFAULT_SETTINGS: QmdPluginSettings = {
   previewInObsidian: true,
   previewMarkdownFiles: false,
   showYamlFiles: false,
+  showLuaFiles: false,
   showOutline: false,
 };
 
@@ -194,13 +197,17 @@ export default class QmdAsMdPlugin extends Plugin {
       await this.loadSettings();
 
       this.registerView(QMD_OUTLINE_VIEW, (leaf) => new QmdOutlineView(leaf, this));
-      this.registerView(QMD_YAML_VIEW, (leaf) => new QmdYamlView(leaf));
+      this.registerView(QMD_YAML_VIEW, (leaf) => new QmdYamlFileView(leaf));
+      this.registerView(QMD_LUA_VIEW, (leaf) => new QmdLuaFileView(leaf));
 
       if (this.settings.enableQmdLinking) {
         this.registerQmdExtension();
       }
       if (this.settings.showYamlFiles) {
         this.registerYamlExtensions();
+      }
+      if (this.settings.showLuaFiles) {
+        this.registerLuaExtensions();
       }
 
       this.addSettingTab(new QmdSettingTab(this.app, this));
@@ -491,6 +498,10 @@ export default class QmdAsMdPlugin extends Plugin {
 
   registerYamlExtensions() {
     this.registerExtensions(['yml', 'yaml'], QMD_YAML_VIEW);
+  }
+
+  registerLuaExtensions() {
+    this.registerExtensions(['lua'], QMD_LUA_VIEW);
   }
 
   // Open the Quarto outline in the right sidebar, reusing an existing
@@ -1229,16 +1240,173 @@ function markYamlToken(
   builder.add(from, to, Decoration.mark({ class: className }));
 }
 
-class QmdYamlView extends TextFileView {
+// --- Lua highlighting -----------------------------------------------------
+//
+// Minimal Lua syntax highlighting for the Lua file view — enough to make
+// pandoc/Quarto filter scripts readable. A single forward scan over the
+// whole document text marks comments, strings, numbers and keywords;
+// everything else is left unstyled. The forward scan guarantees the
+// RangeSetBuilder receives ranges in ascending, non-overlapping order.
+
+const LUA_KEYWORDS = new Set([
+  'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function',
+  'goto', 'if', 'in', 'local', 'nil', 'not', 'or', 'repeat', 'return', 'then',
+  'true', 'until', 'while',
+]);
+
+const luaHighlightField = StateField.define<DecorationSet>({
+  create(state): DecorationSet {
+    return buildLuaDecorations(state.doc);
+  },
+  update(decorations, transaction): DecorationSet {
+    if (transaction.docChanged) {
+      return buildLuaDecorations(transaction.state.doc);
+    }
+    return decorations.map(transaction.changes);
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+function buildLuaDecorations(doc: Text): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  const s = doc.toString();
+  const len = s.length;
+
+  const mark = (from: number, to: number, className: string): void => {
+    if (to > from) builder.add(from, to, Decoration.mark({ class: className }));
+  };
+
+  // If a Lua long bracket opens at `open` (`[`, `[=[`, `[==[`, …), return the
+  // index just past its matching close; an unterminated bracket runs to EOF.
+  // Returns -1 when `open` is not a long-bracket opener.
+  const longBracketEnd = (open: number): number => {
+    if (s[open] !== '[') return -1;
+    let j = open + 1;
+    let level = 0;
+    while (s[j] === '=') {
+      level++;
+      j++;
+    }
+    if (s[j] !== '[') return -1;
+    const close = ']' + '='.repeat(level) + ']';
+    const idx = s.indexOf(close, j + 1);
+    return idx === -1 ? len : idx + close.length;
+  };
+
+  let i = 0;
+  while (i < len) {
+    const c = s[i];
+
+    // comment: line (`-- …`) or block (`--[[ … ]]`, `--[==[ … ]==]`)
+    if (c === '-' && s[i + 1] === '-') {
+      const block = longBracketEnd(i + 2);
+      if (block !== -1) {
+        mark(i, block, 'qmd-lua-comment');
+        i = block;
+        continue;
+      }
+      let j = i + 2;
+      while (j < len && s[j] !== '\n') j++;
+      mark(i, j, 'qmd-lua-comment');
+      i = j;
+      continue;
+    }
+
+    // long-bracket string
+    if (c === '[') {
+      const long = longBracketEnd(i);
+      if (long !== -1) {
+        mark(i, long, 'qmd-lua-string');
+        i = long;
+        continue;
+      }
+    }
+
+    // quoted string (single or double); does not span lines
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < len && s[j] !== c && s[j] !== '\n') {
+        if (s[j] === '\\') j++;
+        j++;
+      }
+      if (j < len && s[j] === c) j++;
+      mark(i, j, 'qmd-lua-string');
+      i = j;
+      continue;
+    }
+
+    // number (decimal, hex, fractional, exponent)
+    if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(s[i + 1] ?? ''))) {
+      let j = i;
+      if (c === '0' && (s[i + 1] === 'x' || s[i + 1] === 'X')) {
+        j = i + 2;
+        while (j < len && /[0-9a-fA-F.]/.test(s[j])) j++;
+      } else {
+        while (j < len && /[0-9.]/.test(s[j])) j++;
+        if (s[j] === 'e' || s[j] === 'E') {
+          j++;
+          if (s[j] === '+' || s[j] === '-') j++;
+          while (j < len && /[0-9]/.test(s[j])) j++;
+        }
+      }
+      mark(i, j, 'qmd-lua-number');
+      i = j;
+      continue;
+    }
+
+    // identifier — only keywords get marked
+    if (/[A-Za-z_]/.test(c)) {
+      let j = i + 1;
+      while (j < len && /[A-Za-z0-9_]/.test(s[j])) j++;
+      if (LUA_KEYWORDS.has(s.slice(i, j))) mark(i, j, 'qmd-lua-keyword');
+      i = j;
+      continue;
+    }
+
+    i++;
+  }
+
+  return builder.finish();
+}
+
+interface CodeViewConfig {
+  label: string;
+  ariaLabel: string;
+  highlightField: StateField<DecorationSet>;
+}
+
+const YAML_CODE_VIEW: CodeViewConfig = {
+  label: 'YAML file',
+  ariaLabel: 'YAML file contents',
+  highlightField: yamlHighlightField,
+};
+
+const LUA_CODE_VIEW: CodeViewConfig = {
+  label: 'Lua file',
+  ariaLabel: 'Lua file contents',
+  highlightField: luaHighlightField,
+};
+
+// A minimal CodeMirror-backed file view, shared by the YAML and Lua file
+// views. The only per-language difference is the highlight StateField and
+// the labels, supplied through CodeViewConfig.
+//
+// getViewType() is left abstract on purpose: Obsidian's View constructor
+// calls getViewType() *during* super(), before subclass constructor params
+// and field initializers have run, so it cannot read instance state. Each
+// concrete subclass returns a module-level literal instead.
+abstract class QmdCodeFileView extends TextFileView {
   private editorView: EditorView | null = null;
   private settingViewData = false;
 
-  getViewType(): string {
-    return QMD_YAML_VIEW;
+  constructor(leaf: WorkspaceLeaf, private readonly config: CodeViewConfig) {
+    super(leaf);
   }
 
+  abstract getViewType(): string;
+
   getDisplayText(): string {
-    return this.file?.name ?? 'YAML file';
+    return this.file?.name ?? this.config.label;
   }
 
   getIcon(): string {
@@ -1248,16 +1416,16 @@ class QmdYamlView extends TextFileView {
   onload(): void {
     super.onload();
     this.contentEl.empty();
-    this.contentEl.addClass('qmd-yaml-view');
+    this.contentEl.addClass('qmd-code-view');
     this.editorView = new EditorView({
       parent: this.contentEl,
       state: EditorState.create({
         doc: this.data ?? '',
         extensions: [
           EditorState.tabSize.of(2),
-          yamlHighlightField,
+          this.config.highlightField,
           EditorView.contentAttributes.of({
-            'aria-label': 'YAML file contents',
+            'aria-label': this.config.ariaLabel,
             autocapitalize: 'off',
             autocomplete: 'off',
             spellcheck: 'false',
@@ -1306,6 +1474,26 @@ class QmdYamlView extends TextFileView {
 
   clear(): void {
     this.setViewData('');
+  }
+}
+
+class QmdYamlFileView extends QmdCodeFileView {
+  constructor(leaf: WorkspaceLeaf) {
+    super(leaf, YAML_CODE_VIEW);
+  }
+
+  getViewType(): string {
+    return QMD_YAML_VIEW;
+  }
+}
+
+class QmdLuaFileView extends QmdCodeFileView {
+  constructor(leaf: WorkspaceLeaf) {
+    super(leaf, LUA_CODE_VIEW);
+  }
+
+  getViewType(): string {
+    return QMD_LUA_VIEW;
   }
 }
 
@@ -1424,6 +1612,25 @@ class QmdSettingTab extends PluginSettingTab {
               this.plugin.registerYamlExtensions();
             } else {
               new Notice('Reload the plugin to hide YAML files again.');
+            }
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Show Lua files')
+      .setDesc(
+        'When on, .lua files appear in Obsidian using a CodeMirror editor with minimal Lua syntax highlighting — handy for editing Quarto/pandoc filter scripts. Turn off and reload the plugin to hide them again.'
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showLuaFiles)
+          .onChange(async (value) => {
+            this.plugin.settings.showLuaFiles = value;
+            if (value) {
+              this.plugin.registerLuaExtensions();
+            } else {
+              new Notice('Reload the plugin to hide Lua files again.');
             }
             await this.plugin.saveSettings();
           })
