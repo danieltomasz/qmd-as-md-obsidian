@@ -58,7 +58,7 @@ help:
 	@echo "Optional: NOTES=\"...\" passes non-interactive release notes."
 
 zip:
-	zip qmd-as-md.zip main.js manifest.json
+	zip qmd-as-md.zip main.js manifest.json styles.css
 
 clean:
 	rm -rf node_modules dist build .cache *.log *.tmp release-local
@@ -137,7 +137,7 @@ release-beta:
 		--title "$$VERSION (beta)" \
 		--prerelease \
 		--notes "$$FINAL_NOTES" \
-		main.js "$$STAGE/manifest.json"; \
+		main.js styles.css "$$STAGE/manifest.json"; \
 	rm -rf "$$STAGE"; \
 	echo "✓ Released $$VERSION beta."
 
@@ -160,7 +160,7 @@ release-stable:
 	gh release create "$$VERSION" \
 		--title "$$VERSION" \
 		--notes "$$FINAL_NOTES" \
-		main.js manifest.json; \
+		main.js styles.css manifest.json; \
 	echo "✓ Released $$VERSION stable."
 
 .PHONY: help zip clean build release-local release-beta release-stable
