@@ -36,6 +36,13 @@ if [ -z "$$VERSION" ] || [ "$$VERSION" = "undefined" ]; then \
 fi
 endef
 
+# Records the manifest's version -> minAppVersion mapping in versions.json,
+# so the Obsidian community store knows the minimum app version each
+# release requires. $$MANIFEST must be set by the caller.
+define update_versions_json
+node -e 'const fs=require("fs"),m=require("./"+process.argv[1]),f="versions.json",v=fs.existsSync(f)?JSON.parse(fs.readFileSync(f,"utf8")):{};v[m.version]=m.minAppVersion;fs.writeFileSync(f,JSON.stringify(v,null,2)+"\n");' "$$MANIFEST"
+endef
+
 # Fails unless the working tree (tracked files) is clean — a tag must
 # point at a committed state, not whatever happens to be on disk.
 define require_clean_tree
@@ -54,7 +61,8 @@ help:
 	@echo "  release-local   Build into release-local/$(PLUGIN_ID)/ (manifest-beta.json"
 	@echo "                  by default; STABLE=1 to use manifest.json). Folder is"
 	@echo "                  gitignored; copy it into <vault>/.obsidian/plugins/."
-	@echo "  sync-version    Write the manifest version into package.json (BETA by"
+	@echo "  sync-version    Write the manifest version into package.json and record"
+	@echo "                  version -> minAppVersion in versions.json (BETA by"
 	@echo "                  default; STABLE=1 to read manifest.json). Commit the result."
 	@echo "  tag-beta        Tag + push the manifest-beta.json version. The release.yml"
 	@echo "                  workflow then builds and publishes the GitHub pre-release."
@@ -125,7 +133,9 @@ sync-version:
 	$(read_version); \
 	echo "→ Setting package.json version to $$VERSION (from $$MANIFEST)..."; \
 	npm pkg set version="$$VERSION"; \
-	echo "✓ package.json now $$VERSION. Commit this change, then run a tag-* target."
+	echo "→ Recording $$VERSION -> minAppVersion in versions.json..."; \
+	$(update_versions_json); \
+	echo "✓ package.json + versions.json now at $$VERSION. Commit these changes, then run a tag-* target."
 
 tag-beta:
 	@set -e; \

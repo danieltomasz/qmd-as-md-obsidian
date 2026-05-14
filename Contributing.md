@@ -31,7 +31,7 @@ The `makefile` wraps common tasks. Run `make help` for the list:
 - **`make zip`** — bundle `main.js` + `manifest.json` + `styles.css` into `qmd-as-md.zip`.
 - **`make clean`** — wipe `node_modules` and build artefacts.
 - **`make release-local`** — build into `release-local/<plugin-id>/` for manual install (`STABLE=1` to use `manifest.json`).
-- **`make sync-version`** — write the manifest version into `package.json` (`STABLE=1` to read `manifest.json`).
+- **`make sync-version`** — write the manifest version into `package.json` and record the `version → minAppVersion` mapping in `versions.json` (`STABLE=1` to read `manifest.json`).
 - **`make tag-beta`** — tag + push the `manifest-beta.json` version. The release workflow then publishes the pre-release.
 - **`make tag-stable`** — tag + push the `manifest.json` version. The release workflow then publishes the release.
 
@@ -50,7 +50,7 @@ To publish a release:
 
 ```bash
 # Beta — bump the version in manifest-beta.json first, then:
-make sync-version          # mirror that version into package.json
+make sync-version          # mirror version into package.json + versions.json
 git commit -am "release: 0.2.0-rc.9"
 make tag-beta              # tags 0.2.0-rc.9 and pushes it
 
@@ -72,6 +72,8 @@ The workflow then checks out the tag, runs `npm install && npm run build`, selec
 After a beta release, BRAT users can hit **Check for updates to all beta plugins** to pull it.
 
 > `styles.css` is a hand-written source file (not a build artefact). It must stay tracked in git, and both the workflow and `make zip` ship it. Don't add it back to `.gitignore`.
+>
+> `versions.json` maps each plugin version to the minimum Obsidian version it requires. The Obsidian community store reads it to decide which release to offer a given user. `make sync-version` keeps it in step with the manifest — keep it committed, and don't ship it as a release asset (it lives in the repo root, not the release).
 
 ## Troubleshooting the release flow
 

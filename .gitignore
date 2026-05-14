@@ -7,7 +7,6 @@
 
 # npm
 node_modules
-package-lock.json
 
 # build
 # NOTE: styles.css is a hand-written source file, not a build artefact —
