@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to **QMD as Markdown** are documented here. Pre-release versions (`-rc.x`, `-beta.x`) are distributed only via [BRAT](https://github.com/TfTHacker/obsidian42-brat); stable releases go to the Obsidian community plugin store.
+All notable changes to **qmd as md** are documented here. Pre-release versions (`-rc.x`, `-beta.x`) are distributed only via [BRAT](https://github.com/TfTHacker/obsidian42-brat); stable releases go to the Obsidian community plugin store.
 
 ## 0.3.2
 
