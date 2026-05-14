@@ -14,7 +14,12 @@ To contribute or customize the plugin:
 4. Copy `manifest.json`, `main.js`, and `styles.css` to a subfolder in your plugins directory: `<vault>/.obsidian/plugins/<plugin-name>/`
 5. Reload Obsidian to apply changes.
 
-Alternatively, clone the repository directly into your plugins folder. After installing dependencies, run `npm run dev` to enable watch mode for live compilation. Reload Obsidian (`Ctrl + R`) to view updates.
+For live development, run `npm run dev` to start watch-mode compilation, and point it at a **dedicated test vault** — not your real one. The repository's `node_modules` and `.git` do not belong inside a vault, and a synced vault (Obsidian Sync, iCloud, git) will try to sync them. Two safe layouts:
+
+- Clone the repository into `<test-vault>/.obsidian/plugins/<plugin-id>/` directly. Acceptable only because the test vault is disposable.
+- Keep the repository anywhere outside a vault and symlink the build outputs (`main.js`, `manifest.json`, `styles.css`) into `<test-vault>/.obsidian/plugins/<plugin-id>/`.
+
+Reload Obsidian (`Ctrl + R`) after each rebuild to load the changes.
 
 For quick manual testing against a real vault, `make release-local` builds the plugin into `release-local/<plugin-id>/` — a folder laid out exactly like `<vault>/.obsidian/plugins/<plugin-id>/`, ready to copy across.
 
