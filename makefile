@@ -152,6 +152,12 @@ tag-beta:
 	@set -e; \
 	MANIFEST=manifest-beta.json; \
 	$(read_version); \
+	case "$$VERSION" in \
+		*-*) ;; \
+		*) echo "manifest-beta.json version '$$VERSION' has no prerelease suffix (e.g. -rc.1, -beta.1)."; \
+		   echo "release.yml keys the channel off a hyphen in the tag — a plain tag publishes a NORMAL release, not a pre-release."; \
+		   echo "Bump manifest-beta.json to a -rc.N / -beta.N version first."; exit 1 ;; \
+	esac; \
 	$(require_clean_tree); \
 	if git rev-parse "$$VERSION" >/dev/null 2>&1; then \
 		echo "Tag $$VERSION already exists. Bump manifest-beta.json first."; exit 1; \
@@ -165,6 +171,12 @@ tag-stable:
 	@set -e; \
 	MANIFEST=manifest.json; \
 	$(read_version); \
+	case "$$VERSION" in \
+		*-*) echo "manifest.json version '$$VERSION' contains a prerelease suffix."; \
+		     echo "release.yml would publish this tag as a pre-release, not a stable release."; \
+		     echo "Use a plain version (e.g. 0.3.2) for tag-stable, or run tag-beta instead."; exit 1 ;; \
+		*) ;; \
+	esac; \
 	$(require_clean_tree); \
 	if git rev-parse "$$VERSION" >/dev/null 2>&1; then \
 		echo "Tag $$VERSION already exists. Bump manifest.json first."; exit 1; \
