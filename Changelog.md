@@ -2,6 +2,17 @@
 
 All notable changes to **qmd as md** are documented here. Pre-release versions (`-rc.x`, `-beta.x`) are distributed only via [BRAT](https://github.com/TfTHacker/obsidian42-brat); stable releases go to the Obsidian community plugin store.
 
+## 0.3.3
+
+### Internal
+
+- Split `main.ts` into `main.ts` + `code-view.ts` + `outline.ts` for
+  maintainability. No behaviour change.
+- `make tag-beta` / `tag-stable` now refuse a version whose prerelease
+  suffix doesn't match the channel — a plain version can no longer be
+  tagged as a beta (`release.yml` would otherwise publish it as a normal
+  release).
+
 ## 0.3.2
 
 ### Added
