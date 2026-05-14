@@ -65,13 +65,17 @@ help:
 	@echo "  sync-version    Write the manifest version into package.json and record"
 	@echo "                  version -> minAppVersion in versions.json (BETA by"
 	@echo "                  default; STABLE=1 to read manifest.json). Commit the result."
-	@echo "  tag-beta        Tag + push the manifest-beta.json version. The release.yml"
-	@echo "                  workflow then builds and publishes the GitHub pre-release."
-	@echo "  tag-stable      Tag + push the manifest.json version. The release.yml"
-	@echo "                  workflow then builds and publishes the GitHub release."
+	@echo "  tag-beta        Run sync-version, then tag + push the manifest-beta.json"
+	@echo "                  version. The release.yml workflow then builds and"
+	@echo "                  publishes the GitHub pre-release."
+	@echo "  tag-stable      Run sync-version, then tag + push the manifest.json"
+	@echo "                  version. The release.yml workflow then builds and"
+	@echo "                  publishes the GitHub release."
 	@echo ""
-	@echo "Public release flow:  bump the manifest -> make sync-version -> commit"
-	@echo "                      -> make tag-beta (or tag-stable)."
+	@echo "Public release flow:  bump the manifest -> commit -> make tag-beta"
+	@echo "                      (or tag-stable). The tag target runs sync-version"
+	@echo "                      first; if it changes package.json/versions.json,"
+	@echo "                      commit those and re-run the tag target."
 
 zip:
 	zip qmd-as-md.zip main.js manifest.json styles.css
@@ -158,6 +162,7 @@ tag-beta:
 		   echo "release.yml keys the channel off a hyphen in the tag — a plain tag publishes a NORMAL release, not a pre-release."; \
 		   echo "Bump manifest-beta.json to a -rc.N / -beta.N version first."; exit 1 ;; \
 	esac; \
+	$(MAKE) sync-version; \
 	$(require_clean_tree); \
 	if git rev-parse "$$VERSION" >/dev/null 2>&1; then \
 		echo "Tag $$VERSION already exists. Bump manifest-beta.json first."; exit 1; \
@@ -177,6 +182,7 @@ tag-stable:
 		     echo "Use a plain version (e.g. 0.3.2) for tag-stable, or run tag-beta instead."; exit 1 ;; \
 		*) ;; \
 	esac; \
+	$(MAKE) sync-version STABLE=1; \
 	$(require_clean_tree); \
 	if git rev-parse "$$VERSION" >/dev/null 2>&1; then \
 		echo "Tag $$VERSION already exists. Bump manifest.json first."; exit 1; \
