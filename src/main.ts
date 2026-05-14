@@ -367,10 +367,32 @@ export default class QmdAsMdPlugin extends Plugin {
           });
       };
 
+      // Quarto "ERROR:" lines from this preview run. Used both to surface
+      // recompile failures live (preview keeps running, so the close
+      // handler never fires) and to explain a startup exit in the Notice.
+      const errorLines: string[] = [];
+      // Dedupe: a single failed recompile emits the same ERROR: block on
+      // every save until fixed — only Notice when the error text changes.
+      let lastErrorShown = '';
+
       // Per-line handler: log the line, then look for the two markers
       // we care about ("Output created:" and "Browse at").
       const handlePreviewLine = (line: string) => {
         logQuartoLine('Quarto Preview', line);
+
+        if (/^ERROR:/.test(line)) {
+          errorLines.push(line);
+          if (line !== lastErrorShown) {
+            lastErrorShown = line;
+            new Notice(`Quarto preview error:\n${line}`, 15000);
+          }
+          return;
+        }
+        // A clean compile clears the dedupe guard so the same error
+        // reappearing after a good build is surfaced again.
+        if (line.includes('Output created:')) {
+          lastErrorShown = '';
+        }
 
         // Detect "Output created: <path>" — quarto prints this on every
         // compile in preview mode. If the output is a PDF, route to
@@ -426,7 +448,10 @@ export default class QmdAsMdPlugin extends Plugin {
         previewStdout.flush(); // release any final partial line
         previewStderr.flush();
         if (code !== null && code !== 0) {
-          new Notice(`Quarto preview process exited with code ${code}`);
+          const reason = errorLines.length > 0
+            ? errorLines.join('\n')
+            : 'Check the developer console for details.';
+          new Notice(`Quarto preview exited with code ${code}.\n${reason}`, 15000);
         } else if (code === null && signal && signal !== 'SIGTERM' && signal !== 'SIGKILL') {
           // SIGTERM/SIGKILL come from our own stopPreview / onunload — silent.
           new Notice(`Quarto preview process was terminated by ${signal}`);
@@ -502,6 +527,10 @@ export default class QmdAsMdPlugin extends Plugin {
       });
 
       let detectedOutputBasename: string | null = null;
+      // Quarto prints the human-readable cause on "ERROR:" lines (bad YAML,
+      // missing engine, etc.). Keep them so a failing close can surface the
+      // real reason in the Notice instead of a bare exit code.
+      const errorLines: string[] = [];
 
       // Per-line handler: log the line, then watch for "Output created:".
       const handleRenderLine = (line: string) => {
@@ -509,6 +538,9 @@ export default class QmdAsMdPlugin extends Plugin {
         const match = line.match(/Output created:\s*(.+?)\s*$/);
         if (match) {
           detectedOutputBasename = path.basename(match[1].trim());
+        }
+        if (/^ERROR:/.test(line)) {
+          errorLines.push(line);
         }
       };
 
@@ -552,9 +584,14 @@ export default class QmdAsMdPlugin extends Plugin {
               : 'terminated';
           // The full output was already streamed line-by-line through
           // console.log / console.error as it arrived — no need to
-          // re-dump it. Just summarise the failure.
+          // re-dump it. Surface the actual ERROR: line(s) in the Notice so
+          // the user sees the cause (bad YAML, missing engine, ...) without
+          // having to open the developer console.
           console.error(`[qmd-as-md] Quarto render failed (${exitLabel}).`);
-          new Notice(`Quarto render failed (${exitLabel}). Check console.`);
+          const reason = errorLines.length > 0
+            ? errorLines.join('\n')
+            : 'Check the developer console for details.';
+          new Notice(`Quarto render failed (${exitLabel}).\n${reason}`, 15000);
           return;
         }
 
