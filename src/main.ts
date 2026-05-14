@@ -818,18 +818,30 @@ class QmdOutlineView extends ItemView {
       const item = list.createDiv({
         cls: 'qmd-outline-item',
         text: heading.text,
+        // Keyboard-accessible: focusable, announced as a link, and the
+        // keydown handler below makes Enter/Space activate it.
+        attr: { tabindex: '0', role: 'link' },
       });
       // Indentation is driven by CSS off this attribute — no inline styles.
       item.dataset.level = String(heading.level);
-      item.addEventListener('click', () => {
+
+      const jumpTo = () => {
         const target = this.app.workspace.getActiveViewOfType(MarkdownView);
-        // The active file can change between render and click; only jump
-        // when the same file is still focused.
+        // The active file can change between render and activation; only
+        // jump when the same file is still focused.
         if (!target || target.file?.path !== file.path) return;
         const pos = { line: heading.line, ch: 0 };
         target.editor.setCursor(pos);
         target.editor.scrollIntoView({ from: pos, to: pos }, true);
         target.editor.focus();
+      };
+
+      item.addEventListener('click', jumpTo);
+      item.addEventListener('keydown', (evt) => {
+        if (evt.key === 'Enter' || evt.key === ' ') {
+          evt.preventDefault();
+          jumpTo();
+        }
       });
     }
   }

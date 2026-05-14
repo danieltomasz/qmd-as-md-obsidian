@@ -1,3 +1,6 @@
+# macOS
+.DS_Store
+
 # Intellij
 *.iml
 .idea
@@ -7,8 +10,9 @@ node_modules
 package-lock.json
 
 # build
+# NOTE: styles.css is a hand-written source file, not a build artefact —
+# it must stay tracked so it ships with the plugin.
 main.js
-styles.css
 *.js.map
 data.json
 release.zip

@@ -9,12 +9,6 @@ PLUGIN_ID := qmd-as-md-obsidian
 # Each macro is a single `\`-joined shell fragment that ends without a
 # trailing semicolon — the caller adds `;` and continues the chain.
 
-define preflight
-command -v gh >/dev/null || { echo "gh CLI not found. Install from https://cli.github.com"; exit 1; }; \
-command -v node >/dev/null || { echo "node not found"; exit 1; }; \
-command -v npm >/dev/null || { echo "npm not found"; exit 1; }
-endef
-
 define build_main_js
 echo "→ Building main.js..."; \
 if [ -f package-lock.json ]; then npm ci; else npm install; fi; \
@@ -42,20 +36,33 @@ if [ -z "$$VERSION" ] || [ "$$VERSION" = "undefined" ]; then \
 fi
 endef
 
+# Fails unless the working tree (tracked files) is clean — a tag must
+# point at a committed state, not whatever happens to be on disk.
+define require_clean_tree
+git diff --quiet && git diff --cached --quiet || { \
+	echo "Working tree has uncommitted changes. Commit or stash before tagging."; exit 1; \
+}
+endef
+
 # --- Standard targets ------------------------------------------------------
 
 help:
 	@echo "Targets:"
 	@echo "  build           Install deps, build main.js, then zip."
-	@echo "  zip             Bundle main.js + manifest.json into qmd-as-md.zip."
+	@echo "  zip             Bundle main.js + manifest.json + styles.css into qmd-as-md.zip."
 	@echo "  clean           Remove node_modules, build artefacts, release-local/."
 	@echo "  release-local   Build into release-local/$(PLUGIN_ID)/ (manifest-beta.json"
 	@echo "                  by default; STABLE=1 to use manifest.json). Folder is"
 	@echo "                  gitignored; copy it into <vault>/.obsidian/plugins/."
-	@echo "  release-beta    Publish GitHub pre-release from manifest-beta.json."
-	@echo "  release-stable  Publish GitHub release from manifest.json."
+	@echo "  sync-version    Write the manifest version into package.json (BETA by"
+	@echo "                  default; STABLE=1 to read manifest.json). Commit the result."
+	@echo "  tag-beta        Tag + push the manifest-beta.json version. The release.yml"
+	@echo "                  workflow then builds and publishes the GitHub pre-release."
+	@echo "  tag-stable      Tag + push the manifest.json version. The release.yml"
+	@echo "                  workflow then builds and publishes the GitHub release."
 	@echo ""
-	@echo "Optional: NOTES=\"...\" passes non-interactive release notes."
+	@echo "Public release flow:  bump the manifest -> make sync-version -> commit"
+	@echo "                      -> make tag-beta (or tag-stable)."
 
 zip:
 	zip qmd-as-md.zip main.js manifest.json styles.css
@@ -102,69 +109,48 @@ release-local:
 	echo "  Copy to a vault with:"; \
 	echo "    cp -R release-local/$(PLUGIN_ID) /path/to/vault/.obsidian/plugins/"
 
-# --- Releases --------------------------------------------------------------
-# Publish a GitHub release whose assets BRAT (or the community store) reads.
+# --- Public releases -------------------------------------------------------
+# Releases are built and published by .github/workflows/release.yml, which
+# fires on a pushed tag. A prerelease-style tag (one containing a hyphen,
+# e.g. 0.2.0-rc.8) is published as a GitHub pre-release with the
+# manifest-beta.json contents — that is what BRAT's beta channel reads.
+# A plain tag (e.g. 0.2.0) is published as a normal release.
 #
-#   make release-beta        # reads version from manifest-beta.json
-#   make release-stable      # reads version from manifest.json
-#
-# Both targets prompt for release notes (Enter accepts the default).
-# Override the prompt non-interactively:
-#   make release-beta NOTES="Fixed re-render leaf bug"
-#
-# Requires: gh authenticated, node, working tree clean.
+# These targets only create and push the tag; the workflow does the rest.
+# Tags carry no `v` prefix (Obsidian requirement; see .npmrc).
 
-release-beta:
+sync-version:
 	@set -e; \
-	$(preflight); \
+	if [ "$(STABLE)" = "1" ]; then MANIFEST=manifest.json; else MANIFEST=manifest-beta.json; fi; \
+	$(read_version); \
+	echo "→ Setting package.json version to $$VERSION (from $$MANIFEST)..."; \
+	npm pkg set version="$$VERSION"; \
+	echo "✓ package.json now $$VERSION. Commit this change, then run a tag-* target."
+
+tag-beta:
+	@set -e; \
 	MANIFEST=manifest-beta.json; \
 	$(read_version); \
-	if gh release view "$$VERSION" >/dev/null 2>&1; then \
-		echo "Release $$VERSION already exists. Bump manifest-beta.json first."; exit 1; \
+	$(require_clean_tree); \
+	if git rev-parse "$$VERSION" >/dev/null 2>&1; then \
+		echo "Tag $$VERSION already exists. Bump manifest-beta.json first."; exit 1; \
 	fi; \
-	if [ -z "$(NOTES)" ]; then \
-		read -p "Release notes [Beta release $$VERSION]: " INPUT_NOTES || true; \
-		FINAL_NOTES="$${INPUT_NOTES:-Beta release $$VERSION}"; \
-	else \
-		FINAL_NOTES="$(NOTES)"; \
-	fi; \
-	echo "→ Syncing package.json version to $$VERSION..."; \
-	npm pkg set version="$$VERSION"; \
-	$(build_main_js); \
-	echo "→ Staging manifest-beta.json as manifest.json..."; \
-	STAGE=$$(mktemp -d -t qmd-as-md.XXXXXX); \
-	cp manifest-beta.json "$$STAGE/manifest.json"; \
-	echo "→ Creating GitHub pre-release $$VERSION..."; \
-	gh release create "$$VERSION" \
-		--title "$$VERSION (beta)" \
-		--prerelease \
-		--notes "$$FINAL_NOTES" \
-		main.js styles.css "$$STAGE/manifest.json"; \
-	rm -rf "$$STAGE"; \
-	echo "✓ Released $$VERSION beta."
+	echo "→ Tagging $$VERSION and pushing..."; \
+	git tag -a "$$VERSION" -m "Beta release $$VERSION"; \
+	git push origin "$$VERSION"; \
+	echo "✓ Pushed tag $$VERSION. release.yml will publish the pre-release."
 
-release-stable:
+tag-stable:
 	@set -e; \
-	$(preflight); \
 	MANIFEST=manifest.json; \
 	$(read_version); \
-	if gh release view "$$VERSION" >/dev/null 2>&1; then \
-		echo "Release $$VERSION already exists. Bump manifest.json first."; exit 1; \
+	$(require_clean_tree); \
+	if git rev-parse "$$VERSION" >/dev/null 2>&1; then \
+		echo "Tag $$VERSION already exists. Bump manifest.json first."; exit 1; \
 	fi; \
-	if [ -z "$(NOTES)" ]; then \
-		read -p "Release notes [Stable release $$VERSION]: " INPUT_NOTES || true; \
-		FINAL_NOTES="$${INPUT_NOTES:-Stable release $$VERSION}"; \
-	else \
-		FINAL_NOTES="$(NOTES)"; \
-	fi; \
-	echo "→ Syncing package.json version to $$VERSION..."; \
-	npm pkg set version="$$VERSION"; \
-	$(build_main_js); \
-	echo "→ Creating GitHub release $$VERSION..."; \
-	gh release create "$$VERSION" \
-		--title "$$VERSION" \
-		--notes "$$FINAL_NOTES" \
-		main.js styles.css manifest.json; \
-	echo "✓ Released $$VERSION stable."
+	echo "→ Tagging $$VERSION and pushing..."; \
+	git tag -a "$$VERSION" -m "Release $$VERSION"; \
+	git push origin "$$VERSION"; \
+	echo "✓ Pushed tag $$VERSION. release.yml will publish the release."
 
-.PHONY: help zip clean build release-local release-beta release-stable
+.PHONY: help zip clean build release-local sync-version tag-beta tag-stable
