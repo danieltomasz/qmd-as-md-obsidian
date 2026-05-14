@@ -457,10 +457,21 @@ export default class QmdAsMdPlugin extends Plugin {
       // the default system browser. Without it the plugin's own
       // open-in-Obsidian/open-external logic competes with Quarto's,
       // and the user sees two windows (Obsidian leaf + external tab).
+      //
+      // detached: `quarto preview` forks a separate long-lived server
+      // process. Making the spawned process a process-group leader (POSIX)
+      // lets killPreviewProcess signal the whole group — a plain kill() of
+      // the wrapper would orphan the server, leaving it serving and
+      // recompiling after "stop". No process groups on Windows; the kill
+      // there goes through taskkill instead.
       const quartoProcess = spawn(
         this.settings.quartoPath,
         ['preview', filePath, '--no-browse'],
-        { cwd: workingDir, env: envVars }
+        {
+          cwd: workingDir,
+          env: envVars,
+          detached: process.platform !== 'win32',
+        }
       );
 
       let previewUrl: string | null = null;
@@ -612,25 +623,45 @@ export default class QmdAsMdPlugin extends Plugin {
     }
   }
 
+  // `quarto preview` forks a long-lived server as a child of the spawned
+  // process, so killing only the wrapper leaves that server running. Signal
+  // the whole process tree: the process group on POSIX (the child was
+  // spawned detached, see startPreview), or taskkill /t on Windows.
+  private killPreviewProcess(quartoProcess: ChildProcess): void {
+    if (quartoProcess.killed || quartoProcess.pid === undefined) return;
+    if (process.platform === 'win32') {
+      spawn('taskkill', ['/pid', String(quartoProcess.pid), '/t', '/f']);
+      return;
+    }
+    try {
+      // Negative PID targets the whole process group.
+      process.kill(-quartoProcess.pid, 'SIGTERM');
+    } catch {
+      // Group already gone, or never became a leader — best-effort direct kill.
+      try {
+        quartoProcess.kill('SIGTERM');
+      } catch {
+        /* already dead */
+      }
+    }
+  }
+
   async stopPreview(file: TFile) {
     const quartoProcess = this.activePreviewProcesses.get(file.path);
     if (quartoProcess) {
-      if (!quartoProcess.killed) {
-        quartoProcess.kill();
-      }
+      this.killPreviewProcess(quartoProcess);
       this.activePreviewProcesses.delete(file.path);
       new Notice('Quarto preview stopped');
     }
   }
 
   stopAllPreviews() {
+    const hadPreviews = this.activePreviewProcesses.size > 0;
     this.activePreviewProcesses.forEach((quartoProcess, filePath) => {
-      if (!quartoProcess.killed) {
-        quartoProcess.kill();
-      }
+      this.killPreviewProcess(quartoProcess);
       this.activePreviewProcesses.delete(filePath);
     });
-    if (this.activePreviewProcesses.size > 0) {
+    if (hadPreviews) {
       new Notice('All Quarto previews stopped');
     }
   }
