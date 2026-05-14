@@ -128,6 +128,8 @@ release-beta:
 	else \
 		FINAL_NOTES="$(NOTES)"; \
 	fi; \
+	echo "→ Syncing package.json version to $$VERSION..."; \
+	npm pkg set version="$$VERSION"; \
 	$(build_main_js); \
 	echo "→ Staging manifest-beta.json as manifest.json..."; \
 	STAGE=$$(mktemp -d -t qmd-as-md.XXXXXX); \
@@ -155,6 +157,8 @@ release-stable:
 	else \
 		FINAL_NOTES="$(NOTES)"; \
 	fi; \
+	echo "→ Syncing package.json version to $$VERSION..."; \
+	npm pkg set version="$$VERSION"; \
 	$(build_main_js); \
 	echo "→ Creating GitHub release $$VERSION..."; \
 	gh release create "$$VERSION" \

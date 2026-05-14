@@ -1,6 +1,6 @@
 {
   "name": "qmd-as-md-obsidian",
-  "version": "0.1.0-rc.1",
+  "version": "0.2.0-rc.8",
   "description": "Edit and preview QMD files in Obsidian with Quarto support",
   "main": "main.js",
   "type": "module",
@@ -8,11 +8,15 @@
     "dev": "rollup --config rollup.config.js -w",
     "build": "rollup --config rollup.config.js"
   },
-  "keywords": ["obsidian-plugin", "quarto", "qmd"],
+  "keywords": [
+    "obsidian-plugin",
+    "quarto",
+    "qmd"
+  ],
   "author": "Daniel Borek",
   "license": "MIT",
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^25.0.0",
+    "@rollup/plugin-commonjs": "^29.0.2",
     "@rollup/plugin-node-resolve": "^15.2.0",
     "@rollup/plugin-typescript": "^11.1.0",
     "@types/node": "^20.0.0",
