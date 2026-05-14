@@ -60,14 +60,15 @@
   background: var(--background-primary);
   color: var(--text-normal);
   font-family: var(--font-monospace);
-  font-size: var(--font-text-size);
-  line-height: var(--line-height-normal);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-tight);
   outline: none;
 }
 
 .qmd-yaml-view .cm-scroller {
   font-family: var(--font-monospace);
-  line-height: var(--line-height-normal);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-tight);
 }
 
 .qmd-yaml-view .cm-content {

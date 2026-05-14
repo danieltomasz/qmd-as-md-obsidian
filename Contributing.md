@@ -9,8 +9,10 @@ This project is built using TypeScript for type checking and documentation. It r
 To contribute or customize the plugin:
 
 1. Clone this repository.
-2. Run `npm i` or `yarn` to install dependencies.
-3. Use `npm run build` to compile the plugin.
+2. Install dependencies. The tree is split into two groups:
+   - **`dependencies`** — build-critical (rollup, typescript, `@codemirror/*`, …). `npm ci --omit=dev` installs only these (~40 packages) and is all you need to compile the plugin.
+   - **`devDependencies`** — eslint tooling only (~300 packages, via `eslint-plugin-obsidianmd`). Install with a plain `npm ci` when you want to lint. Neither group ships to users — the release is just `main.js` + `manifest.json` + `styles.css`.
+3. Use `npm run build` to compile the plugin (or `make build`, which installs build deps for you).
 4. Copy `manifest.json`, `main.js`, and `styles.css` to a subfolder in your plugins directory: `<vault>/.obsidian/plugins/<plugin-name>/`
 5. Reload Obsidian to apply changes.
 
@@ -27,7 +29,8 @@ For quick manual testing against a real vault, `make release-local` builds the p
 
 The `makefile` wraps common tasks. Run `make help` for the list:
 
-- **`make build`** — install deps (`npm ci` when `package-lock.json` exists, otherwise `npm install`), build `main.js`, then zip.
+- **`make build`** — install **build deps only** (`npm ci --omit=dev`, ~40 packages), build `main.js`, then zip.
+- **`make lint`** — install **all deps** (`npm ci`, ~340 packages incl. eslint) and run `eslint src/`. Run this before submitting to the community store.
 - **`make zip`** — bundle `main.js` + `manifest.json` + `styles.css` into `qmd-as-md.zip`.
 - **`make clean`** — wipe `node_modules` and build artefacts.
 - **`make release-local`** — build into `release-local/<plugin-id>/` for manual install (`STABLE=1` to use `manifest.json`).
