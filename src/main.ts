@@ -192,7 +192,7 @@ export default class QmdAsMdPlugin extends Plugin {
         if (file) await this.renderPdf(file);
       });
 
-      this.registerRenderCommand('render-quarto-pdf', 'Render Quarto (use YAML format)');
+      this.registerRenderCommand('render-quarto-pdf', 'Render Quarto (use format defined in YAML)');
       this.registerRenderCommand('render-quarto-pdf-typst', 'Render Quarto to PDF (Typst engine)', 'typst');
       this.registerRenderCommand('render-quarto-pdf-latex', 'Render Quarto to PDF (LaTeX engine)', 'pdf');
 
@@ -659,7 +659,7 @@ export default class QmdAsMdPlugin extends Plugin {
         envVars.QUARTO_TYPST = this.settings.quartoTypst.trim();
       }
 
-      const engineLabel = toFormat === 'typst' ? 'Typst' : toFormat === 'pdf' ? 'LaTeX' : 'use YAML format';
+      const engineLabel = toFormat === 'typst' ? 'Typst' : toFormat === 'pdf' ? 'LaTeX' : 'format defined in YAML';
       new Notice(`Rendering Quarto (${engineLabel})...`);
 
       // Best-guess path used for the pre-render leaf-capture (so we can
