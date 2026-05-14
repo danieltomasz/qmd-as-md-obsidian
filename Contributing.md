@@ -1,4 +1,4 @@
-# Contributing to QMD as Markdown
+# Contributing to qmd as md
 
 ## Development setup
 
@@ -9,8 +9,10 @@ This project is built using TypeScript for type checking and documentation. It r
 To contribute or customize the plugin:
 
 1. Clone this repository.
-2. Run `npm i` or `yarn` to install dependencies.
-3. Use `npm run build` to compile the plugin.
+2. Install dependencies. The tree is split into two groups:
+   - **`dependencies`** — build-critical (Rollup, TypeScript, `@codemirror/*`, …). `npm ci --omit=dev` installs only these (~40 packages) and is all you need to compile the plugin.
+   - **`devDependencies`** — ESLint tooling only (~300 packages, via `eslint-plugin-obsidianmd`). Install with a plain `npm ci` when you want to lint. Neither group ships to users — the release is just `main.js` + `manifest.json` + `styles.css`.
+3. Use `npm run build` to compile the plugin (or `make build`, which installs build deps for you).
 4. Copy `manifest.json`, `main.js`, and `styles.css` to a subfolder in your plugins directory: `<vault>/.obsidian/plugins/<plugin-name>/`
 5. Reload Obsidian to apply changes.
 
@@ -27,11 +29,12 @@ For quick manual testing against a real vault, `make release-local` builds the p
 
 The `makefile` wraps common tasks. Run `make help` for the list:
 
-- **`make build`** — install deps (`npm ci` when `package-lock.json` exists, otherwise `npm install`), build `main.js`, then zip.
+- **`make build`** — install **build deps only** (`npm ci --omit=dev`, ~40 packages), build `main.js`, then zip.
+- **`make lint`** — install **all deps** (`npm ci`, ~340 packages incl. ESLint) and run `eslint src/`. Run this before submitting to the community store.
 - **`make zip`** — bundle `main.js` + `manifest.json` + `styles.css` into `qmd-as-md.zip`.
 - **`make clean`** — wipe `node_modules` and build artefacts.
 - **`make release-local`** — build into `release-local/<plugin-id>/` for manual install (`STABLE=1` to use `manifest.json`).
-- **`make sync-version`** — write the manifest version into `package.json` (`STABLE=1` to read `manifest.json`).
+- **`make sync-version`** — write the manifest version into `package.json` and record the `version → minAppVersion` mapping in `versions.json` (`STABLE=1` to read `manifest.json`).
 - **`make tag-beta`** — tag + push the `manifest-beta.json` version. The release workflow then publishes the pre-release.
 - **`make tag-stable`** — tag + push the `manifest.json` version. The release workflow then publishes the release.
 
@@ -50,7 +53,7 @@ To publish a release:
 
 ```bash
 # Beta — bump the version in manifest-beta.json first, then:
-make sync-version          # mirror that version into package.json
+make sync-version          # mirror version into package.json + versions.json
 git commit -am "release: 0.2.0-rc.9"
 make tag-beta              # tags 0.2.0-rc.9 and pushes it
 
@@ -72,6 +75,8 @@ The workflow then checks out the tag, runs `npm install && npm run build`, selec
 After a beta release, BRAT users can hit **Check for updates to all beta plugins** to pull it.
 
 > `styles.css` is a hand-written source file (not a build artefact). It must stay tracked in git, and both the workflow and `make zip` ship it. Don't add it back to `.gitignore`.
+>
+> `versions.json` maps each plugin version to the minimum Obsidian version it requires. The Obsidian community store reads it to decide which release to offer a given user. `make sync-version` keeps it in step with the manifest — keep it committed, and don't ship it as a release asset (it lives in the repo root, not the release).
 
 ## Troubleshooting the release flow
 

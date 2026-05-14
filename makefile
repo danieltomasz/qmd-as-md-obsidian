@@ -10,8 +10,8 @@ PLUGIN_ID := qmd-as-md-obsidian
 # trailing semicolon — the caller adds `;` and continues the chain.
 
 define build_main_js
-echo "→ Building main.js..."; \
-if [ -f package-lock.json ]; then npm ci; else npm install; fi; \
+echo "→ Building main.js (build deps only, ~40 packages)..."; \
+if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi; \
 npm run build; \
 [ -f main.js ] || { echo "main.js not produced by build"; exit 1; }
 endef
@@ -36,6 +36,13 @@ if [ -z "$$VERSION" ] || [ "$$VERSION" = "undefined" ]; then \
 fi
 endef
 
+# Records the manifest's version -> minAppVersion mapping in versions.json,
+# so the Obsidian community store knows the minimum app version each
+# release requires. $$MANIFEST must be set by the caller.
+define update_versions_json
+node -e 'const fs=require("fs"),m=require("./"+process.argv[1]),f="versions.json",v=fs.existsSync(f)?JSON.parse(fs.readFileSync(f,"utf8")):{};v[m.version]=m.minAppVersion;fs.writeFileSync(f,JSON.stringify(v,null,2)+"\n");' "$$MANIFEST"
+endef
+
 # Fails unless the working tree (tracked files) is clean — a tag must
 # point at a committed state, not whatever happens to be on disk.
 define require_clean_tree
@@ -48,13 +55,15 @@ endef
 
 help:
 	@echo "Targets:"
-	@echo "  build           Install deps, build main.js, then zip."
+	@echo "  build           Install build deps (~40 pkgs), build main.js, then zip."
+	@echo "  lint            Install all deps (~340 pkgs, incl. eslint) and lint src/."
 	@echo "  zip             Bundle main.js + manifest.json + styles.css into qmd-as-md.zip."
 	@echo "  clean           Remove node_modules, build artefacts, release-local/."
 	@echo "  release-local   Build into release-local/$(PLUGIN_ID)/ (manifest-beta.json"
 	@echo "                  by default; STABLE=1 to use manifest.json). Folder is"
 	@echo "                  gitignored; copy it into <vault>/.obsidian/plugins/."
-	@echo "  sync-version    Write the manifest version into package.json (BETA by"
+	@echo "  sync-version    Write the manifest version into package.json and record"
+	@echo "                  version -> minAppVersion in versions.json (BETA by"
 	@echo "                  default; STABLE=1 to read manifest.json). Commit the result."
 	@echo "  tag-beta        Tag + push the manifest-beta.json version. The release.yml"
 	@echo "                  workflow then builds and publishes the GitHub pre-release."
@@ -74,6 +83,16 @@ build:
 	@set -e; \
 	$(build_main_js); \
 	$(MAKE) zip
+
+# Lint needs the eslint tooling, which is the bulk of the dependency
+# tree (~300 of ~340 packages). It is kept out of the build path on
+# purpose — `make build` installs build deps only. Run this before
+# submitting to the community store to catch Obsidian guideline issues.
+lint:
+	@set -e; \
+	echo "→ Installing all deps (incl. eslint, ~340 packages)..."; \
+	if [ -f package-lock.json ]; then npm ci; else npm install; fi; \
+	npm run lint
 
 # --- Local "release" for manual testing ------------------------------------
 # Build the plugin into release-local/<plugin-id>/ at the repo root. The
@@ -125,7 +144,9 @@ sync-version:
 	$(read_version); \
 	echo "→ Setting package.json version to $$VERSION (from $$MANIFEST)..."; \
 	npm pkg set version="$$VERSION"; \
-	echo "✓ package.json now $$VERSION. Commit this change, then run a tag-* target."
+	echo "→ Recording $$VERSION -> minAppVersion in versions.json..."; \
+	$(update_versions_json); \
+	echo "✓ package.json + versions.json now at $$VERSION. Commit these changes, then run a tag-* target."
 
 tag-beta:
 	@set -e; \
@@ -153,4 +174,4 @@ tag-stable:
 	git push origin "$$VERSION"; \
 	echo "✓ Pushed tag $$VERSION. release.yml will publish the release."
 
-.PHONY: help zip clean build release-local sync-version tag-beta tag-stable
+.PHONY: help zip clean build lint release-local sync-version tag-beta tag-stable

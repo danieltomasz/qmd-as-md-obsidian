@@ -11,7 +11,24 @@ const config = {
     exports: 'default',
     name: 'QmdAsMdPlugin'
   },
-  external: ['obsidian', 'electron', 'path', 'child_process', 'fs', 'os'],
+  external: [
+    'obsidian',
+    'electron',
+    'path',
+    'child_process',
+    'fs',
+    'os',
+    '@codemirror/state',
+    '@codemirror/view',
+    '@codemirror/commands',
+    '@codemirror/language',
+    '@codemirror/search',
+    '@codemirror/autocomplete',
+    '@codemirror/lint',
+    '@lezer/common',
+    '@lezer/highlight',
+    '@lezer/lr',
+  ],
   plugins: [
     typescript({
       sourceMap: true,

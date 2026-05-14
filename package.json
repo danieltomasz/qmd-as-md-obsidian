@@ -1,12 +1,13 @@
 {
   "name": "qmd-as-md-obsidian",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Edit and preview QMD files in Obsidian with Quarto support",
   "main": "main.js",
   "type": "module",
   "scripts": {
     "dev": "rollup --config rollup.config.js -w",
-    "build": "rollup --config rollup.config.js"
+    "build": "rollup --config rollup.config.js",
+    "lint": "eslint src"
   },
   "keywords": [
     "obsidian-plugin",
@@ -15,7 +16,14 @@
   ],
   "author": "Daniel Borek",
   "license": "MIT",
-  "devDependencies": {
+  "comments": {
+    "dependencies": "Build-critical: needed to compile main.js. `npm ci --omit=dev` installs only these (~40 packages).",
+    "devDependencies": "Lint-only: eslint + obsidian rule checks. `npm ci` installs these too (~340 packages). Not needed to build or release."
+  },
+  "dependencies": {
+    "@codemirror/commands": "^6.7.1",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.38.6",
     "@rollup/plugin-commonjs": "^29.0.2",
     "@rollup/plugin-node-resolve": "^15.2.0",
     "@rollup/plugin-typescript": "^11.1.0",
@@ -24,5 +32,11 @@
     "rollup": "^3.29.0",
     "tslib": "^2.6.0",
     "typescript": "^5.0.0"
+  },
+  "devDependencies": {
+    "@typescript-eslint/parser": "^8.59.3",
+    "eslint": "^9.39.4",
+    "eslint-plugin-obsidianmd": "^0.3.0",
+    "typescript-eslint": "^8.59.3"
   }
 }

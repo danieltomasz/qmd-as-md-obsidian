@@ -5,6 +5,7 @@ import {
   FileView,
   ItemView,
   MarkdownView,
+  TextFileView,
   PluginSettingTab,
   App,
   Setting,
@@ -16,6 +17,9 @@ import {
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import { shell } from 'electron';
+import { EditorState, RangeSetBuilder, StateField, Text } from '@codemirror/state';
+import { Decoration, DecorationSet, EditorView, keymap } from '@codemirror/view';
+import { indentMore, indentLess } from '@codemirror/commands';
 
 // --- Quarto output plumbing -----------------------------------------------
 //
@@ -89,6 +93,7 @@ function previewUrlFromLine(line: string): string | null {
 // inside an R/Python cell is not mistaken for a heading.
 
 const QMD_OUTLINE_VIEW = 'qmd-outline-view';
+const QMD_YAML_VIEW = 'qmd-yaml-view';
 
 interface QmdHeading {
   level: number;
@@ -152,6 +157,8 @@ interface QmdPluginSettings {
   quartoTypst: string;
   openPdfInObsidian: boolean;
   previewInObsidian: boolean;
+  previewMarkdownFiles: boolean;
+  showYamlFiles: boolean;
   showOutline: boolean;
 }
 
@@ -168,6 +175,8 @@ const DEFAULT_SETTINGS: QmdPluginSettings = {
   quartoTypst: '',
   openPdfInObsidian: false,
   previewInObsidian: true,
+  previewMarkdownFiles: false,
+  showYamlFiles: false,
   showOutline: false,
 };
 
@@ -184,14 +193,20 @@ export default class QmdAsMdPlugin extends Plugin {
     try {
       await this.loadSettings();
 
+      this.registerView(QMD_OUTLINE_VIEW, (leaf) => new QmdOutlineView(leaf, this));
+      this.registerView(QMD_YAML_VIEW, (leaf) => new QmdYamlView(leaf));
+
       if (this.settings.enableQmdLinking) {
         this.registerQmdExtension();
+      }
+      if (this.settings.showYamlFiles) {
+        this.registerYamlExtensions();
       }
 
       this.addSettingTab(new QmdSettingTab(this.app, this));
 
       this.addRibbonIcon('eye', 'Toggle Quarto preview', async () => {
-        const file = this.getActiveQuartoFile();
+        const file = this.getActiveQuartoCommandFile();
         if (file) await this.togglePreview(file);
       });
 
@@ -199,7 +214,7 @@ export default class QmdAsMdPlugin extends Plugin {
         id: 'toggle-quarto-preview',
         name: 'Toggle Quarto preview',
         callback: async () => {
-          const file = this.getActiveQuartoFile();
+          const file = this.getActiveQuartoCommandFile();
           if (file) await this.togglePreview(file);
         },
       });
@@ -208,7 +223,7 @@ export default class QmdAsMdPlugin extends Plugin {
         id: 'toggle-quarto-preview-in-obsidian',
         name: 'Toggle Quarto preview in Obsidian',
         callback: async () => {
-          const file = this.getActiveQuartoFile();
+          const file = this.getActiveQuartoCommandFile();
           if (file) await this.togglePreview(file, 'obsidian');
         },
       });
@@ -217,21 +232,19 @@ export default class QmdAsMdPlugin extends Plugin {
         id: 'toggle-quarto-preview-external',
         name: 'Toggle Quarto preview in external browser',
         callback: async () => {
-          const file = this.getActiveQuartoFile();
+          const file = this.getActiveQuartoCommandFile();
           if (file) await this.togglePreview(file, 'external');
         },
       });
 
       this.addRibbonIcon('file-output', 'Render Quarto to PDF', async () => {
-        const file = this.getActiveQuartoFile();
+        const file = this.getActiveQuartoCommandFile();
         if (file) await this.renderPdf(file);
       });
 
       this.registerRenderCommand('render-quarto-pdf', 'Render Quarto (use format defined in YAML)');
       this.registerRenderCommand('render-quarto-pdf-typst', 'Render Quarto to PDF (Typst engine)', 'typst');
       this.registerRenderCommand('render-quarto-pdf-latex', 'Render Quarto to PDF (LaTeX engine)', 'pdf');
-
-      this.registerView(QMD_OUTLINE_VIEW, (leaf) => new QmdOutlineView(leaf, this));
 
       this.addCommand({
         id: 'open-quarto-outline',
@@ -264,7 +277,8 @@ export default class QmdAsMdPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const loaded = (await this.loadData()) as Partial<QmdPluginSettings> | null;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
   }
 
   async saveSettings() {
@@ -275,12 +289,56 @@ export default class QmdAsMdPlugin extends Plugin {
     return file.extension === 'qmd';
   }
 
-  getActiveQuartoFile(): TFile | null {
-    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (activeView?.file && this.isQuartoFile(activeView.file)) {
-      return activeView.file;
+  isMarkdownFile(file: TFile): boolean {
+    return file.extension === 'md';
+  }
+
+  hasQuartoProjectConfigInPath(file: TFile): boolean {
+    let dir = file.parent?.path ?? '';
+    while (true) {
+      const configPath = normalizePath(dir ? `${dir}/_quarto.yml` : '_quarto.yml');
+      if (this.app.vault.getAbstractFileByPath(configPath) instanceof TFile) {
+        return true;
+      }
+      if (!dir) return false;
+      const slash = dir.lastIndexOf('/');
+      dir = slash === -1 ? '' : dir.slice(0, slash);
     }
-    new Notice('Current file is not a Quarto document');
+  }
+
+  getActiveQuartoCommandFile(): TFile | null {
+    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    const file = activeView?.file;
+    if (!file) {
+      new Notice(
+        this.settings.previewMarkdownFiles
+          ? 'Quarto commands require an active .qmd or .md file.'
+          : 'Quarto commands require an active .qmd file.'
+      );
+      return null;
+    }
+
+    if (this.isQuartoFile(file)) {
+      return file;
+    }
+
+    if (this.isMarkdownFile(file)) {
+      if (!this.settings.previewMarkdownFiles) {
+        new Notice('Markdown support is off. Enable it in settings to preview or render .md files with Quarto.');
+        return null;
+      }
+      if (!this.hasQuartoProjectConfigInPath(file)) {
+        new Notice('Markdown Quarto commands require _quarto.yml in this file folder or an ancestor up to the vault root.');
+        return null;
+      }
+      return file;
+    }
+
+    if (this.settings.previewMarkdownFiles) {
+      new Notice('Quarto commands require an active .qmd or .md file.');
+    } else {
+      new Notice('Quarto commands require an active .qmd file.');
+    }
     return null;
   }
 
@@ -293,8 +351,8 @@ export default class QmdAsMdPlugin extends Plugin {
     return null;
   }
 
-  pdfPathFor(qmdFile: TFile): string {
-    return qmdFile.path.replace(/\.qmd$/i, '.pdf');
+  pdfPathFor(file: TFile): string {
+    return file.path.replace(/\.(qmd|md)$/i, '.pdf');
   }
 
   // Pull the TFile a leaf currently shows, without resorting to
@@ -341,7 +399,7 @@ export default class QmdAsMdPlugin extends Plugin {
       if (!currentFile || currentFile.path !== pdfTFile.path) {
         await leaf.openFile(pdfTFile, { active: false });
       }
-      this.app.workspace.revealLeaf(leaf);
+      await this.app.workspace.revealLeaf(leaf);
       return leaf;
     } catch (err) {
       console.error('[qmd-as-md] Failed to open PDF preview in native viewer:', err);
@@ -371,7 +429,14 @@ export default class QmdAsMdPlugin extends Plugin {
     // 'webviewer' view type. If the user has it disabled, setViewState
     // silently fails / leaves an empty leaf, and the user is left
     // wondering why nothing opened. Detect and report instead.
-    const internalPlugins = (this.app as any).internalPlugins;
+    const internalPlugins = (
+      this.app as App & {
+        internalPlugins?: {
+          getEnabledPluginById?: (id: string) => unknown;
+          plugins?: Record<string, { enabled?: boolean } | undefined>;
+        };
+      }
+    ).internalPlugins;
     const webviewerOn =
       internalPlugins?.getEnabledPluginById?.('webviewer') != null ||
       internalPlugins?.plugins?.webviewer?.enabled === true;
@@ -398,7 +463,7 @@ export default class QmdAsMdPlugin extends Plugin {
         active: true,
         state: { url },
       });
-      this.app.workspace.revealLeaf(leaf);
+      await this.app.workspace.revealLeaf(leaf);
     } catch (err) {
       console.error('[qmd-as-md] Failed to open preview in webviewer:', err);
       new Notice(
@@ -414,7 +479,7 @@ export default class QmdAsMdPlugin extends Plugin {
       name,
       icon: 'file-output',
       callback: async () => {
-        const file = this.getActiveQuartoFile();
+        const file = this.getActiveQuartoCommandFile();
         if (file) await this.renderPdf(file, toFormat);
       },
     });
@@ -422,6 +487,10 @@ export default class QmdAsMdPlugin extends Plugin {
 
   registerQmdExtension() {
     this.registerExtensions(['qmd'], 'markdown');
+  }
+
+  registerYamlExtensions() {
+    this.registerExtensions(['yml', 'yaml'], QMD_YAML_VIEW);
   }
 
   // Open the Quarto outline in the right sidebar, reusing an existing
@@ -437,7 +506,7 @@ export default class QmdAsMdPlugin extends Plugin {
       leaf = workspace.getRightLeaf(false);
       await leaf?.setViewState({ type: QMD_OUTLINE_VIEW, active: true });
     }
-    if (leaf) workspace.revealLeaf(leaf);
+    if (leaf) await workspace.revealLeaf(leaf);
     this.refreshOutlineViews();
   }
 
@@ -809,78 +878,82 @@ export default class QmdAsMdPlugin extends Plugin {
         );
       });
 
-      quartoProcess.on('close', async (code: number | null, signal: NodeJS.Signals | null) => {
-        renderStdout.flush(); // release any final partial line
-        renderStderr.flush();
+      quartoProcess.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+        void (async () => {
+          renderStdout.flush(); // release any final partial line
+          renderStderr.flush();
 
-        // A clean exit is code 0. Anything else is a failure, except a
-        // termination by SIGTERM/SIGKILL — that means the process was
-        // intentionally cancelled (matching the preview handler, which
-        // suppresses notices for those signals). Stay quiet then.
-        if (code === 0) {
-          // fall through to the success path below
-        } else if (code === null && (signal === 'SIGTERM' || signal === 'SIGKILL')) {
-          console.error(`[qmd-as-md] Quarto render cancelled (${signal}).`);
-          return;
-        } else {
-          const exitLabel = code !== null
-            ? `exit ${code}`
-            : signal
-              ? `terminated by ${signal}`
-              : 'terminated';
-          // The full output was already streamed line-by-line through
-          // console.log / console.error as it arrived — no need to
-          // re-dump it. Surface the actual ERROR: line(s) in the Notice so
-          // the user sees the cause (bad YAML, missing engine, ...) without
-          // having to open the developer console.
-          console.error(`[qmd-as-md] Quarto render failed (${exitLabel}).`);
-          const reason = errorLines.length > 0
-            ? errorLines.join('\n')
-            : 'Check the developer console for details.';
-          new Notice(`Quarto render failed (${exitLabel}).\n${reason}`, 15000);
-          return;
-        }
+          // A clean exit is code 0. Anything else is a failure, except a
+          // termination by SIGTERM/SIGKILL — that means the process was
+          // intentionally cancelled (matching the preview handler, which
+          // suppresses notices for those signals). Stay quiet then.
+          if (code === 0) {
+            // fall through to the success path below
+          } else if (code === null && (signal === 'SIGTERM' || signal === 'SIGKILL')) {
+            console.error(`[qmd-as-md] Quarto render cancelled (${signal}).`);
+            return;
+          } else {
+            const exitLabel = code !== null
+              ? `exit ${code}`
+              : signal
+                ? `terminated by ${signal}`
+                : 'terminated';
+            // The full output was already streamed line-by-line through
+            // console.log / console.error as it arrived — no need to
+            // re-dump it. Surface the actual ERROR: line(s) in the Notice so
+            // the user sees the cause (bad YAML, missing engine, ...) without
+            // having to open the developer console.
+            console.error(`[qmd-as-md] Quarto render failed (${exitLabel}).`);
+            const reason = errorLines.length > 0
+              ? errorLines.join('\n')
+              : 'Check the developer console for details.';
+            new Notice(`Quarto render failed (${exitLabel}).\n${reason}`, 15000);
+            return;
+          }
 
-        const sourceDir = file.parent?.path ?? '';
-        const outputVaultPath = normalizePath(
-          detectedOutputBasename
-            ? (sourceDir ? `${sourceDir}/${detectedOutputBasename}` : detectedOutputBasename)
-            : guessedPdfPath
-        );
-
-        const outputTFile = await this.waitForVaultFile(outputVaultPath);
-
-        if (!outputTFile) {
-          new Notice(
-            `Quarto rendered, but ${outputVaultPath} did not appear in the vault within the timeout. Check Quarto's output-dir or vault sync.`
+          const sourceDir = file.parent?.path ?? '';
+          const outputVaultPath = normalizePath(
+            detectedOutputBasename
+              ? (sourceDir ? `${sourceDir}/${detectedOutputBasename}` : detectedOutputBasename)
+              : guessedPdfPath
           );
-          return;
-        }
 
-        const isPdf = outputVaultPath.toLowerCase().endsWith('.pdf');
+          const outputTFile = await this.waitForVaultFile(outputVaultPath);
 
-        if (!this.settings.openPdfInObsidian || !isPdf) {
-          new Notice(
-            isPdf
-              ? `PDF rendered: ${outputVaultPath}`
-              : `Rendered: ${outputVaultPath} (Obsidian's built-in viewer only handles PDFs).`
-          );
-          return;
-        }
+          if (!outputTFile) {
+            new Notice(
+              `Quarto rendered, but ${outputVaultPath} did not appear in the vault within the timeout. Check Quarto's output-dir or vault sync.`
+            );
+            return;
+          }
 
-        try {
-          const leaf = existingLeaf?.parent != null
-            ? existingLeaf
-            : this.app.workspace.getLeaf('split', 'vertical');
-          await leaf.openFile(outputTFile, { active: false });
-          this.app.workspace.revealLeaf(leaf);
-          new Notice(`Opened ${outputVaultPath}`);
-        } catch (err) {
-          console.error('Failed to open PDF in Obsidian:', err);
-          new Notice(
-            `PDF rendered at ${outputVaultPath}, but Obsidian could not open it (no PDF viewer registered?).`
-          );
-        }
+          const isPdf = outputVaultPath.toLowerCase().endsWith('.pdf');
+
+          if (!this.settings.openPdfInObsidian || !isPdf) {
+            new Notice(
+              isPdf
+                ? `PDF rendered: ${outputVaultPath}`
+                : `Rendered: ${outputVaultPath} (Obsidian's built-in viewer only handles PDFs).`
+            );
+            return;
+          }
+
+          try {
+            const leaf = existingLeaf?.parent != null
+              ? existingLeaf
+              : this.app.workspace.getLeaf('split', 'vertical');
+            await leaf.openFile(outputTFile, { active: false });
+            await this.app.workspace.revealLeaf(leaf);
+            new Notice(`Opened ${outputVaultPath}`);
+          } catch (err) {
+            console.error('Failed to open PDF in Obsidian:', err);
+            new Notice(
+              `PDF rendered at ${outputVaultPath}, but Obsidian could not open it (no PDF viewer registered?).`
+            );
+          }
+        })().catch((err) => {
+          console.error('[qmd-as-md] Quarto render close handler failed:', err);
+        });
       });
     } catch (error) {
       console.error('Failed to render Quarto PDF:', error);
@@ -1009,6 +1082,233 @@ class QmdOutlineView extends ItemView {
   }
 }
 
+const yamlHighlightField = StateField.define<DecorationSet>({
+  create(state): DecorationSet {
+    return buildYamlDecorations(state.doc);
+  },
+  update(decorations, transaction): DecorationSet {
+    if (transaction.docChanged) {
+      return buildYamlDecorations(transaction.state.doc);
+    }
+    return decorations.map(transaction.changes);
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+function buildYamlDecorations(doc: Text): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
+    const line = doc.line(lineNumber);
+    decorateYamlLine(builder, line.from, line.text);
+  }
+  return builder.finish();
+}
+
+function decorateYamlLine(builder: RangeSetBuilder<Decoration>, lineStart: number, line: string): void {
+  const indent = line.match(/^\s*/)?.[0] ?? '';
+  const content = line.slice(indent.length);
+  const contentStart = lineStart + indent.length;
+  if (!content) return;
+
+  if (content.startsWith('#')) {
+    markYamlToken(builder, contentStart, lineStart + line.length, 'qmd-yaml-comment');
+    return;
+  }
+
+  const markerMatch = content.match(/^(-\s+)(.*)$/);
+  if (markerMatch) {
+    const markerLength = markerMatch[1].length;
+    markYamlToken(builder, contentStart, contentStart + markerLength, 'qmd-yaml-list-marker');
+    decorateYamlSegment(builder, contentStart + markerLength, markerMatch[2]);
+    return;
+  }
+
+  decorateYamlSegment(builder, contentStart, content);
+}
+
+function decorateYamlSegment(builder: RangeSetBuilder<Decoration>, segmentStart: number, segment: string): void {
+  const docMatch = segment.match(/^(\.{3}|-{3})(\s*(#.*)?)$/);
+  if (docMatch) {
+    const markerLength = docMatch[1].length;
+    markYamlToken(builder, segmentStart, segmentStart + markerLength, 'qmd-yaml-doc-marker');
+    decorateYamlValue(builder, segmentStart + markerLength, docMatch[2] ?? '');
+    return;
+  }
+
+  const colon = findYamlKeyColon(segment);
+  if (colon !== -1) {
+    markYamlToken(builder, segmentStart, segmentStart + colon, 'qmd-yaml-key');
+    markYamlToken(builder, segmentStart + colon, segmentStart + colon + 1, 'qmd-yaml-colon');
+    decorateYamlValue(builder, segmentStart + colon + 1, segment.slice(colon + 1));
+    return;
+  }
+
+  decorateYamlValue(builder, segmentStart, segment);
+}
+
+function decorateYamlValue(builder: RangeSetBuilder<Decoration>, valueStart: number, value: string): void {
+  const leading = value.match(/^\s*/)?.[0] ?? '';
+  const rest = value.slice(leading.length);
+  const restStart = valueStart + leading.length;
+  if (!rest) return;
+
+  const commentIndex = findYamlComment(rest);
+  const scalar = commentIndex === -1 ? rest : rest.slice(0, commentIndex);
+  decorateYamlScalar(builder, restStart, scalar);
+  if (commentIndex !== -1) {
+    markYamlToken(builder, restStart + commentIndex, restStart + rest.length, 'qmd-yaml-comment');
+  }
+}
+
+function decorateYamlScalar(builder: RangeSetBuilder<Decoration>, scalarStart: number, scalar: string): void {
+  const trailing = scalar.match(/\s*$/)?.[0] ?? '';
+  const token = trailing ? scalar.slice(0, scalar.length - trailing.length) : scalar;
+  if (!token) return;
+
+  const className = yamlScalarClass(token);
+  markYamlToken(builder, scalarStart, scalarStart + token.length, className);
+}
+
+function yamlScalarClass(token: string): string {
+  if (/^['"].*['"]$/.test(token)) return 'qmd-yaml-string';
+  if (/^[&*][A-Za-z0-9_-]+$/.test(token)) return 'qmd-yaml-anchor';
+  // YAML 1.2 (what Quarto/Pandoc use): only true/false/null/~ are
+  // booleans/null. yes/no/on/off are plain scalars, not booleans.
+  if (/^(true|false|null|~)$/i.test(token)) return 'qmd-yaml-boolean';
+  if (/^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(token)) return 'qmd-yaml-number';
+  if (/^[>|][+-]?$/.test(token)) return 'qmd-yaml-block';
+  if (/^(html|pdf|typst|latex|beamer|revealjs|docx|odt|epub|gfm|jats|dashboard)$/i.test(token)) {
+    return 'qmd-yaml-quarto-format';
+  }
+  return 'qmd-yaml-scalar';
+}
+
+function findYamlKeyColon(segment: string): number {
+  let singleQuoted = false;
+  let doubleQuoted = false;
+  for (let i = 0; i < segment.length; i++) {
+    const char = segment[i];
+    const prev = i > 0 ? segment[i - 1] : '';
+    if (char === "'" && !doubleQuoted) {
+      singleQuoted = !singleQuoted;
+    } else if (char === '"' && !singleQuoted && prev !== '\\') {
+      doubleQuoted = !doubleQuoted;
+    } else if (char === ':' && !singleQuoted && !doubleQuoted) {
+      const next = segment[i + 1] ?? '';
+      const key = segment.slice(0, i).trim();
+      if (key && (!next || /\s/.test(next))) return i;
+    }
+  }
+  return -1;
+}
+
+function findYamlComment(value: string): number {
+  let singleQuoted = false;
+  let doubleQuoted = false;
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i];
+    const prev = i > 0 ? value[i - 1] : '';
+    if (char === "'" && !doubleQuoted) {
+      singleQuoted = !singleQuoted;
+    } else if (char === '"' && !singleQuoted && prev !== '\\') {
+      doubleQuoted = !doubleQuoted;
+    } else if (char === '#' && !singleQuoted && !doubleQuoted && (i === 0 || /\s/.test(prev))) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function markYamlToken(
+  builder: RangeSetBuilder<Decoration>,
+  from: number,
+  to: number,
+  className: string
+): void {
+  if (to <= from) return;
+  builder.add(from, to, Decoration.mark({ class: className }));
+}
+
+class QmdYamlView extends TextFileView {
+  private editorView: EditorView | null = null;
+  private settingViewData = false;
+
+  getViewType(): string {
+    return QMD_YAML_VIEW;
+  }
+
+  getDisplayText(): string {
+    return this.file?.name ?? 'YAML file';
+  }
+
+  getIcon(): string {
+    return 'file-code';
+  }
+
+  onload(): void {
+    super.onload();
+    this.contentEl.empty();
+    this.contentEl.addClass('qmd-yaml-view');
+    this.editorView = new EditorView({
+      parent: this.contentEl,
+      state: EditorState.create({
+        doc: this.data ?? '',
+        extensions: [
+          EditorState.tabSize.of(2),
+          yamlHighlightField,
+          EditorView.contentAttributes.of({
+            'aria-label': 'YAML file contents',
+            autocapitalize: 'off',
+            autocomplete: 'off',
+            spellcheck: 'false',
+          }),
+          keymap.of([
+            { key: 'Tab', run: indentMore },
+            { key: 'Shift-Tab', run: indentLess },
+          ]),
+          EditorView.updateListener.of((update) => {
+            if (!update.docChanged || this.settingViewData) return;
+            this.data = update.state.doc.toString();
+            this.requestSave();
+          }),
+        ],
+      }),
+    });
+    this.register(() => {
+      this.editorView?.destroy();
+      this.editorView = null;
+    });
+  }
+
+  getViewData(): string {
+    return this.editorView?.state.doc.toString() ?? this.data ?? '';
+  }
+
+  setViewData(data: string): void {
+    this.data = data;
+    const view = this.editorView;
+    if (!view) return;
+    const current = view.state.doc.toString();
+    if (current === data) return;
+    this.settingViewData = true;
+    try {
+      view.dispatch({
+        changes: {
+          from: 0,
+          to: current.length,
+          insert: data,
+        },
+      });
+    } finally {
+      this.settingViewData = false;
+    }
+  }
+
+  clear(): void {
+    this.setViewData('');
+  }
+}
+
 class QmdSettingTab extends PluginSettingTab {
   plugin: QmdAsMdPlugin;
 
@@ -1092,6 +1392,39 @@ class QmdSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.previewInObsidian)
           .onChange(async (value) => {
             this.plugin.settings.previewInObsidian = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Preview and render Markdown files with Quarto')
+      .setDesc(
+        'When on, Quarto preview and render commands also accept .md files that have _quarto.yml in their folder or an ancestor up to the vault root. Leave off to restrict commands to .qmd files.'
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.previewMarkdownFiles)
+          .onChange(async (value) => {
+            this.plugin.settings.previewMarkdownFiles = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Show YAML files')
+      .setDesc(
+        'When on, .yml and .yaml files appear in Obsidian using a CodeMirror editor with Quarto-oriented YAML highlighting. Turn off and reload the plugin to hide them again.'
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showYamlFiles)
+          .onChange(async (value) => {
+            this.plugin.settings.showYamlFiles = value;
+            if (value) {
+              this.plugin.registerYamlExtensions();
+            } else {
+              new Notice('Reload the plugin to hide YAML files again.');
+            }
             await this.plugin.saveSettings();
           })
       );
