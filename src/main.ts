@@ -67,6 +67,15 @@ function makeLineProcessor(handle: (line: string) => void): LineProcessor {
   return proc;
 }
 
+function stripAnsiCodes(text: string): string {
+  return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
+}
+
+function previewUrlFromLine(line: string): string | null {
+  const match = stripAnsiCodes(line).match(/Browse at\s+(https?:\/\/\S+)/);
+  return match?.[1] ?? null;
+}
+
 // --- Quarto outline -------------------------------------------------------
 //
 // Obsidian's core Outline panel reads headings from metadataCache, which
@@ -146,6 +155,13 @@ interface QmdPluginSettings {
   showOutline: boolean;
 }
 
+type PreviewMode = 'obsidian' | 'external';
+
+interface ActivePreview {
+  process: ChildProcess;
+  mode: PreviewMode;
+}
+
 const DEFAULT_SETTINGS: QmdPluginSettings = {
   quartoPath: 'quarto',
   enableQmdLinking: true,
@@ -157,7 +173,7 @@ const DEFAULT_SETTINGS: QmdPluginSettings = {
 
 export default class QmdAsMdPlugin extends Plugin {
   settings: QmdPluginSettings;
-  activePreviewProcesses: Map<string, ChildProcess> = new Map();
+  activePreviewProcesses: Map<string, ActivePreview> = new Map();
   // The .qmd file the outline should describe. Tracked separately from the
   // active leaf: clicking inside the outline sidebar makes *it* the active
   // leaf, so the outline must remember the last real .qmd rather than ask
@@ -185,6 +201,24 @@ export default class QmdAsMdPlugin extends Plugin {
         callback: async () => {
           const file = this.getActiveQuartoFile();
           if (file) await this.togglePreview(file);
+        },
+      });
+
+      this.addCommand({
+        id: 'toggle-quarto-preview-in-obsidian',
+        name: 'Toggle Quarto preview in Obsidian',
+        callback: async () => {
+          const file = this.getActiveQuartoFile();
+          if (file) await this.togglePreview(file, 'obsidian');
+        },
+      });
+
+      this.addCommand({
+        id: 'toggle-quarto-preview-external',
+        name: 'Toggle Quarto preview in external browser',
+        callback: async () => {
+          const file = this.getActiveQuartoFile();
+          if (file) await this.togglePreview(file, 'external');
         },
       });
 
@@ -316,20 +350,20 @@ export default class QmdAsMdPlugin extends Plugin {
     }
   }
 
-  async openPreviewUrl(url: string) {
-    console.log('[qmd-as-md][diag] openPreviewUrl called. url:', url,
-      'previewInObsidian:', this.settings.previewInObsidian);
+  async openPreviewUrl(url: string, mode: PreviewMode) {
+    console.log('[qmd-as-md][diag] openPreviewUrl called. url:', url, 'mode:', mode);
     new Notice(`Preview available at ${url}`);
 
-    if (!this.settings.previewInObsidian) {
-      // shell.openExternal hands the URL to the OS default browser. This
-      // is the reliable path — activeWindow.open('_blank') frequently
-      // opens nothing in Obsidian's renderer.
-      console.log('[qmd-as-md][diag] calling shell.openExternal; shell is:', typeof shell, shell);
-      shell.openExternal(url).then(
-        () => console.log('[qmd-as-md][diag] shell.openExternal resolved'),
-        (err) => console.error('[qmd-as-md][diag] shell.openExternal rejected:', err)
-      );
+    if (mode === 'external') {
+      // Quarto is launched with --no-browser in every mode; this opens the
+      // captured URL once while leaving Quarto's live-reload client in charge
+      // after the page is loaded.
+      try {
+        await shell.openExternal(url);
+      } catch (err) {
+        console.error('[qmd-as-md] Failed to open external preview:', err);
+        new Notice(`Could not open external browser. Preview URL: ${url}`, 10000);
+      }
       return;
     }
 
@@ -345,14 +379,15 @@ export default class QmdAsMdPlugin extends Plugin {
     if (!webviewerOn) {
       new Notice(
         'Obsidian core plugin "Web viewer" is disabled — cannot show preview in-app. ' +
-          'Enable it in Settings → Core plugins, or turn off "Open Quarto preview in Obsidian" ' +
-          'to use your external browser instead.',
+          'Enable it in Settings → Core plugins, or use "Toggle Quarto preview in external browser" instead. ' +
+          'Falling back to your external browser.',
         10000
       );
       console.warn(
         '[qmd-as-md] webviewer core plugin disabled; preview URL was:',
         url
       );
+      void shell.openExternal(url);
       return;
     }
 
@@ -432,17 +467,29 @@ export default class QmdAsMdPlugin extends Plugin {
     }
   }
 
-  async togglePreview(file: TFile) {
-    if (this.activePreviewProcesses.has(file.path)) {
+  private defaultPreviewMode(): PreviewMode {
+    return this.settings.previewInObsidian ? 'obsidian' : 'external';
+  }
+
+  async togglePreview(file: TFile, mode: PreviewMode = this.defaultPreviewMode()) {
+    const activePreview = this.activePreviewProcesses.get(file.path);
+    if (activePreview?.mode === mode) {
       await this.stopPreview(file);
     } else {
-      await this.startPreview(file);
+      if (activePreview) {
+        await this.stopPreview(file);
+      }
+      await this.startPreview(file, mode);
     }
   }
 
-  async startPreview(file: TFile) {
-    if (this.activePreviewProcesses.has(file.path)) {
-      return; // Preview already running for this file.
+  async startPreview(file: TFile, mode: PreviewMode = this.defaultPreviewMode()) {
+    const activePreview = this.activePreviewProcesses.get(file.path);
+    if (activePreview?.mode === mode) {
+      return; // Preview already running for this file in this mode.
+    }
+    if (activePreview) {
+      await this.stopPreview(file);
     }
 
     try {
@@ -460,11 +507,12 @@ export default class QmdAsMdPlugin extends Plugin {
         envVars.QUARTO_TYPST = this.settings.quartoTypst.trim();
       }
 
-      // --no-browse stops Quarto from auto-opening the preview URL in
-      // the default system browser. Without it the plugin's own
-      // open-in-Obsidian/open-external logic competes with Quarto's,
-      // and the user sees two windows (Obsidian leaf + external tab).
-      //
+      // Always suppress Quarto's own browser launch. The plugin opens the
+      // captured URL exactly once for the selected target, which avoids
+      // duplicate tabs and avoids Quarto-managed browser navigation closing
+      // the preview process on subsequent source changes.
+      const args = ['preview', filePath, '--no-browser'];
+
       // detached: `quarto preview` forks a separate long-lived server
       // process. Making the spawned process a process-group leader (POSIX)
       // lets killPreviewProcess signal the whole group — a plain kill() of
@@ -473,7 +521,7 @@ export default class QmdAsMdPlugin extends Plugin {
       // there goes through taskkill instead.
       const quartoProcess = spawn(
         this.settings.quartoPath,
-        ['preview', filePath, '--no-browse'],
+        args,
         {
           cwd: workingDir,
           env: envVars,
@@ -490,8 +538,8 @@ export default class QmdAsMdPlugin extends Plugin {
       //  leaf:  current PDF tab, if any.
       //  path:  the path that leaf is showing (and the path of an
       //         in-flight open call, recorded synchronously when it
-      //         is scheduled). Also gates the webviewer-URL skip
-      //         logic on the "Browse at" branch below — when a PDF
+      //         is scheduled). Also gates the preview-URL skip logic
+      //         on the "Browse at" branch below — when a PDF
       //         preview is active, we don't open Quarto's PDF.js
       //         wrapper page in the webviewer too.
       //  busy:  a call to openOrRefreshPdfPreview is in flight.
@@ -563,7 +611,7 @@ export default class QmdAsMdPlugin extends Plugin {
         // Quarto serves at /web/viewer.html. Subsequent compiles refresh
         // the same leaf so live reload still works.
         const outMatch = line.match(/Output created:\s*(.+?)\s*$/);
-        if (outMatch && /\.pdf$/i.test(outMatch[1].trim()) && this.settings.previewInObsidian) {
+        if (outMatch && /\.pdf$/i.test(outMatch[1].trim()) && mode === 'obsidian') {
           const outBasename = path.basename(outMatch[1].trim());
           const sourceDir = file.parent?.path ?? '';
           const vaultPath = normalizePath(sourceDir ? `${sourceDir}/${outBasename}` : outBasename);
@@ -571,24 +619,22 @@ export default class QmdAsMdPlugin extends Plugin {
           return;
         }
 
-        if (!previewUrl && line.includes('Browse at')) {
-          const match = line.match(/Browse at\s+(http:\/\/[^\s]+)/);
+        const matchedPreviewUrl = previewUrlFromLine(line);
+        if (!previewUrl && matchedPreviewUrl) {
           console.log(
             '[qmd-as-md][diag] Browse-at line seen.',
-            'matched:', match?.[1] ?? null,
+            'matched:', matchedPreviewUrl,
             'pdfPreviewPath:', pdfPreviewPath,
-            'previewInObsidian:', this.settings.previewInObsidian
+            'mode:', mode
           );
-          if (match && match[1]) {
-            previewUrl = match[1];
-            // If we already opened a native PDF preview, skip the
-            // webviewer URL — Quarto's PDF.js wrapper would just be
-            // a worse version of the same content.
-            if (pdfPreviewPath) {
-              new Notice(`PDF preview opened natively. Server URL: ${previewUrl}`);
-            } else {
-              this.openPreviewUrl(previewUrl);
-            }
+          previewUrl = matchedPreviewUrl;
+          // If we already opened a native PDF preview, skip the
+          // webviewer URL — Quarto's PDF.js wrapper would just be
+          // a worse version of the same content.
+          if (pdfPreviewPath) {
+            new Notice(`PDF preview opened natively. Server URL: ${previewUrl}`);
+          } else {
+            void this.openPreviewUrl(previewUrl, mode);
           }
         }
       };
@@ -610,7 +656,9 @@ export default class QmdAsMdPlugin extends Plugin {
           `Failed to spawn '${this.settings.quartoPath}': ${err.message}. ` +
             'Check the Quarto path setting and that Quarto is on PATH.'
         );
-        this.activePreviewProcesses.delete(file.path);
+        if (this.activePreviewProcesses.get(file.path)?.process === quartoProcess) {
+          this.activePreviewProcesses.delete(file.path);
+        }
       });
 
       quartoProcess.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
@@ -625,11 +673,13 @@ export default class QmdAsMdPlugin extends Plugin {
           // SIGTERM/SIGKILL come from our own stopPreview / onunload — silent.
           new Notice(`Quarto preview process was terminated by ${signal}`);
         }
-        this.activePreviewProcesses.delete(file.path);
+        if (this.activePreviewProcesses.get(file.path)?.process === quartoProcess) {
+          this.activePreviewProcesses.delete(file.path);
+        }
       });
 
-      this.activePreviewProcesses.set(file.path, quartoProcess);
-      new Notice('Quarto preview started');
+      this.activePreviewProcesses.set(file.path, { process: quartoProcess, mode });
+      new Notice(`Quarto preview started (${mode === 'obsidian' ? 'Obsidian' : 'external browser'})`);
     } catch (error) {
       console.error('Failed to start Quarto preview:', error);
       new Notice('Failed to start Quarto preview');
@@ -660,9 +710,9 @@ export default class QmdAsMdPlugin extends Plugin {
   }
 
   async stopPreview(file: TFile) {
-    const quartoProcess = this.activePreviewProcesses.get(file.path);
-    if (quartoProcess) {
-      this.killPreviewProcess(quartoProcess);
+    const activePreview = this.activePreviewProcesses.get(file.path);
+    if (activePreview) {
+      this.killPreviewProcess(activePreview.process);
       this.activePreviewProcesses.delete(file.path);
       new Notice('Quarto preview stopped');
     }
@@ -670,8 +720,8 @@ export default class QmdAsMdPlugin extends Plugin {
 
   stopAllPreviews() {
     const hadPreviews = this.activePreviewProcesses.size > 0;
-    this.activePreviewProcesses.forEach((quartoProcess, filePath) => {
-      this.killPreviewProcess(quartoProcess);
+    this.activePreviewProcesses.forEach((activePreview, filePath) => {
+      this.killPreviewProcess(activePreview.process);
       this.activePreviewProcesses.delete(filePath);
     });
     if (hadPreviews) {
@@ -1031,11 +1081,11 @@ class QmdSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('Open Quarto preview in Obsidian')
       .setDesc(
-        "When on: PDF previews (format: typst / pdf) open in Obsidian's native PDF viewer; " +
-          "non-PDF previews (HTML, etc.) open in Obsidian 1.8's built-in web viewer " +
-          '(requires the "Web viewer" core plugin enabled in Settings → Core plugins). ' +
-          'Live reload from the running Quarto preview is preserved in both cases. ' +
-          'When off, the preview URL opens in your default external browser instead.'
+        'Default target for the generic Toggle Quarto preview command and ribbon icon. ' +
+          "When on: PDF previews (format: typst / pdf) open in Obsidian's native PDF viewer; " +
+          "non-PDF previews (HTML, etc.) open in Obsidian 1.8's built-in web viewer. " +
+          'When off, the plugin opens Quarto\'s preview URL in your default external browser. ' +
+          'Use the explicit preview commands to choose a target without changing this setting.'
       )
       .addToggle((toggle) =>
         toggle

@@ -6,7 +6,8 @@ All notable changes to **QMD as Markdown** are documented here. Pre-release vers
 
 ### Added
 
-- **Quarto preview inside Obsidian.** PDF previews (`format: typst` / `pdf`) open in Obsidian's native PDF viewer; HTML and other previews open in the built-in **Web viewer** core plugin. Live reload from the running `quarto preview` is preserved in both cases. New **Open Quarto preview in Obsidian** setting — turn it off to open the preview URL in your external browser instead.
+- **Quarto preview inside Obsidian.** PDF previews (`format: typst` / `pdf`) open in Obsidian's native PDF viewer; HTML and other previews open in the built-in **Web viewer** core plugin. Live reload from the running `quarto preview` is preserved in both cases. New **Open Quarto preview in Obsidian** setting controls the generic preview command and ribbon target.
+- **Explicit preview targets.** New **Toggle Quarto preview in Obsidian** and **Toggle Quarto preview in external browser** commands choose the preview destination without changing the default setting.
 - **Quarto outline view** (opt-in via the **Show Quarto outline** setting). Lists the headings of the active `.qmd` in a sidebar and jumps to them on click — Obsidian's core Outline panel cannot read `.qmd` files (issue #3). Active file only; included files are not resolved. Also available as the *Open Quarto outline* command.
 - **QUARTO_TYPST variable** setting, for pointing Quarto at a specific Typst install.
 
@@ -14,7 +15,7 @@ All notable changes to **QMD as Markdown** are documented here. Pre-release vers
 
 - Quarto errors are now surfaced as Obsidian notices for both render and preview, showing the actual `ERROR:` line instead of a bare exit code. Preview also reports recompile errors live.
 - Quarto output is streamed to the developer console line by line, routed by severity (`ERROR:` / `WARNING:` / info).
-- `quarto preview` is launched with `--no-browse`, so it no longer also opens an external browser tab alongside the in-Obsidian preview.
+- Preview launches `quarto preview` with `--no-browser` in both modes; the plugin opens the captured URL once for the selected target, avoiding duplicate browser tabs and Quarto-managed browser navigation issues.
 - The render flow reads the real output path from Quarto's `Output created:` line rather than guessing.
 
 ### Fixed
@@ -22,7 +23,7 @@ All notable changes to **QMD as Markdown** are documented here. Pre-release vers
 - The preview PDF tab is reused across recompiles instead of stacking new tabs, and opens once per session.
 - A missing or misconfigured `quarto` binary now produces a clear notice instead of a silent failure.
 - Quarto informational messages are no longer logged as errors.
-- A disabled **Web viewer** core plugin is detected and reported, instead of silently leaving an empty leaf.
+- A disabled **Web viewer** core plugin is detected and reported, then falls back to the external browser instead of silently leaving an empty leaf.
 
 ### Removed
 

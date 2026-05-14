@@ -24,7 +24,7 @@ To enable linking with Quarto files, ensure the **"Detect all file extensions"**
 
 ### Quarto preview
 
-Available from the command palette: run **Quarto Preview** on the active `.qmd` file. *(Since 0.0.3.)*
+Available from the command palette: run **Toggle Quarto preview** on the active `.qmd` file. *(Since 0.0.3.)*
 
 ### Rendering to PDF
 
@@ -62,16 +62,21 @@ Re-running the render reuses the existing PDF tab — no tab stacking.
 
 *(Since 0.2.)*
 
-The **Toggle Quarto Preview** command (palette + ribbon icon `eye`, default hotkey `Ctrl+Shift+P`) spawns `quarto preview` on the active `.qmd`, which runs a live HTTP server that re-renders on every save.
+The **Toggle Quarto preview** command (palette + ribbon icon `eye`, default hotkey `Ctrl+Shift+P`) spawns `quarto preview` on the active `.qmd`, which runs a live HTTP server that re-renders on every save.
 
-Setting **Open Quarto preview in Obsidian** decides where the preview lands:
+Setting **Open Quarto preview in Obsidian** decides where the generic command and ribbon preview land:
 
 - **On** (default):
   - **PDF outputs** (e.g. `format: typst`, `format: pdf`) open in Obsidian's **native PDF viewer** in a right split. Each compile from the running preview refreshes the same tab — no Quarto-served PDF.js wrapper page. The HTTP server keeps running in the background, but the URL is not opened; instead, a notice reports the server URL for reference.
   - **Non-PDF outputs** (HTML, etc.) open in Obsidian 1.8's built-in `webviewer` view. Requires the **Web viewer** core plugin to be enabled (Settings → Core plugins). The preview re-renders in place as you save the source.
-- **Off**: the preview URL opens in your default external browser (via `window.open`, which Electron routes through `shell.openExternal`).
+- **Off**: the plugin opens Quarto's preview URL in your default external browser.
 
-If the Web viewer core plugin is disabled while the toggle is on for a non-PDF preview, the plugin shows a notice instead of silently failing.
+Two explicit command-palette entries bypass the setting:
+
+- **Toggle Quarto preview in Obsidian** always uses the in-app target.
+- **Toggle Quarto preview in external browser** always opens your default browser.
+
+If the Web viewer core plugin is disabled while the Obsidian target is used for a non-PDF preview, the plugin shows a notice and falls back to your external browser instead of silently failing.
 
 Either way, the underlying `quarto preview` process keeps running until you toggle the command again (or trigger a render) — the toggle controls where the output is shown, not the server's behaviour. Stopping the preview kills the whole Quarto process tree, including the background HTTP server, so it does not keep serving after you stop it.
 
