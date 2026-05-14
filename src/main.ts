@@ -22,14 +22,16 @@ import * as path from 'path';
 // trailing partial line and only emits whole lines. Call .flush() on the
 // close handler to release any final partial line.
 //
-// logQuartoLine routes a single line to console: lines prefixed with
-// "ERROR:" go through console.error so they stand out; everything else
-// goes through console.log so the user can always see what Quarto is
-// doing.
+// logQuartoLine routes a single line to console by severity prefix:
+// "ERROR:" -> console.error, "WARNING:"/"WARN:" -> console.warn,
+// everything else -> console.log. Centralised so both the preview and
+// render paths stay in sync and new prefixes only need handling here.
 
 function logQuartoLine(prefix: string, line: string): void {
   if (/^ERROR:/.test(line)) {
     console.error(`${prefix}: ${line}`);
+  } else if (/^WARN(ING)?:/.test(line)) {
+    console.warn(`${prefix}: ${line}`);
   } else {
     console.log(`${prefix}: ${line}`);
   }
@@ -400,12 +402,13 @@ export default class QmdAsMdPlugin extends Plugin {
         }
       };
 
-      // Quarto's stdout/stderr split is not strictly content/error and
-      // chunk boundaries don't align with line boundaries, so feed both
-      // streams through one buffered line processor.
-      const processPreviewOutput = makeLineProcessor(handlePreviewLine);
-      quartoProcess.stdout?.on('data', (data: Buffer) => processPreviewOutput(data.toString()));
-      quartoProcess.stderr?.on('data', (data: Buffer) => processPreviewOutput(data.toString()));
+      // One buffered processor per stream — stdout and stderr each
+      // need their own partial-line buffer, or interleaved fragments
+      // from the two streams would be spliced into synthetic lines.
+      const previewStdout = makeLineProcessor(handlePreviewLine);
+      const previewStderr = makeLineProcessor(handlePreviewLine);
+      quartoProcess.stdout?.on('data', (data: Buffer) => previewStdout(data.toString()));
+      quartoProcess.stderr?.on('data', (data: Buffer) => previewStderr(data.toString()));
 
       // child_process.spawn does not throw on a missing binary; it emits
       // an 'error' event later. Without this listener an ENOENT just
@@ -420,7 +423,8 @@ export default class QmdAsMdPlugin extends Plugin {
       });
 
       quartoProcess.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
-        processPreviewOutput.flush(); // release any final partial line
+        previewStdout.flush(); // release any final partial line
+        previewStderr.flush();
         if (code !== null && code !== 0) {
           new Notice(`Quarto preview process exited with code ${code}`);
         } else if (code === null && signal && signal !== 'SIGTERM' && signal !== 'SIGKILL') {
@@ -508,12 +512,13 @@ export default class QmdAsMdPlugin extends Plugin {
         }
       };
 
-      // Quarto prints progress to BOTH stdout and stderr, and chunk
-      // boundaries don't align with line boundaries, so feed both
-      // streams through one buffered line processor.
-      const processRenderOutput = makeLineProcessor(handleRenderLine);
-      quartoProcess.stdout?.on('data', (data: Buffer) => processRenderOutput(data.toString()));
-      quartoProcess.stderr?.on('data', (data: Buffer) => processRenderOutput(data.toString()));
+      // One buffered processor per stream — stdout and stderr each
+      // need their own partial-line buffer, or interleaved fragments
+      // from the two streams would be spliced into synthetic lines.
+      const renderStdout = makeLineProcessor(handleRenderLine);
+      const renderStderr = makeLineProcessor(handleRenderLine);
+      quartoProcess.stdout?.on('data', (data: Buffer) => renderStdout(data.toString()));
+      quartoProcess.stderr?.on('data', (data: Buffer) => renderStderr(data.toString()));
 
       // child_process.spawn does not throw on a missing binary; it emits
       // an 'error' event later. Without this listener an ENOENT just
@@ -527,8 +532,19 @@ export default class QmdAsMdPlugin extends Plugin {
       });
 
       quartoProcess.on('close', async (code: number | null, signal: NodeJS.Signals | null) => {
-        processRenderOutput.flush(); // release any final partial line
-        if (code !== 0) {
+        renderStdout.flush(); // release any final partial line
+        renderStderr.flush();
+
+        // A clean exit is code 0. Anything else is a failure, except a
+        // termination by SIGTERM/SIGKILL — that means the process was
+        // intentionally cancelled (matching the preview handler, which
+        // suppresses notices for those signals). Stay quiet then.
+        if (code === 0) {
+          // fall through to the success path below
+        } else if (code === null && (signal === 'SIGTERM' || signal === 'SIGKILL')) {
+          console.error(`[qmd-as-md] Quarto render cancelled (${signal}).`);
+          return;
+        } else {
           const exitLabel = code !== null
             ? `exit ${code}`
             : signal
