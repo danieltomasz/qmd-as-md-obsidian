@@ -12,6 +12,8 @@ This plugin originated in 2022 as a minimal change to a now-archived project by 
 - Run Quarto preview on the current file, shown inside Obsidian or in your browser.
 - Render to PDF and (optionally) open the result inside Obsidian.
 - A sidebar **outline** of the active `.qmd` file's headings — Obsidian's core Outline panel cannot read `.qmd` files.
+- Optionally run the preview and render commands on `.md` files too, when they live inside a Quarto project (a folder with `_quarto.yml`).
+- Optional dedicated editor for `.yml` / `.yaml` files, with Quarto-oriented YAML syntax highlighting.
 - Quarto errors surface as Obsidian notices, not just in the developer console.
 
 ## Usage
@@ -62,11 +64,7 @@ Re-running the render reuses the existing PDF tab — no tab stacking.
 
 *(Since 0.2.)*
 
-The **Toggle Quarto preview** command (palette + ribbon icon `eye`, default hotkey `Ctrl+Shift+P`) spawns `quarto preview` on the active `.qmd`, which runs a live HTTP server that re-renders on every save.
-
-Setting **Preview and render Markdown files with Quarto** is off by default. Turn it on if you also want the preview and render commands to accept `.md` files when `_quarto.yml` exists in the file's folder or any ancestor up to the vault root.
-
-Setting **Show YAML files** is off by default. Turn it on to make `.yml` and `.yaml` files, including `_quarto.yml`, visible and editable in Obsidian using a CodeMirror editor with Quarto-oriented YAML highlighting.
+The **Toggle Quarto preview** command (palette + ribbon icon `eye`) spawns `quarto preview` on the active `.qmd`, which runs a live HTTP server that re-renders on every save.
 
 Setting **Open Quarto preview in Obsidian** decides where the generic command and ribbon preview land:
 
@@ -98,6 +96,18 @@ Turn on **Show Quarto outline** in settings, or run the **Open Quarto outline** 
 - ATX headings (`#`, `##`, …) only; setext (underlined) headings are not shown.
 - Headings inside YAML frontmatter and fenced code cells are ignored.
 
+### Markdown files in Quarto projects
+
+*(Since 0.3.)*
+
+Setting **Preview and render Markdown files with Quarto** is off by default. Turn it on to let the preview and render commands also accept `.md` files — but only when those files live inside a Quarto project, i.e. a `_quarto.yml` exists in the file's folder or any ancestor folder up to the vault root. Plain `.md` notes outside a Quarto project are left untouched.
+
+### YAML file editor
+
+*(Since 0.3.)*
+
+Setting **Show YAML files** is off by default. Turn it on to make `.yml` and `.yaml` files — including `_quarto.yml` — visible and editable inside Obsidian, in a dedicated CodeMirror editor with Quarto-oriented YAML syntax highlighting.
+
 ## Alternatives
 
 As of the end of 2024, there are also other plugins that make it easier to work with Obsidian and Quarto:
@@ -111,7 +121,7 @@ The main difference between this plugin and these other plugins is that this plu
 
 ### From the community plugin store (stable)
 
-Search for **QMD as Markdown** in **Settings → Community plugins → Browse**. The community-store version always tracks the latest **stable** release (currently `0.2.0`).
+Search for **qmd as md** in **Settings → Community plugins → Browse**. The community-store version always tracks the latest **stable** release (currently `0.3.0`).
 
 ### Beta releases via BRAT
 
@@ -177,5 +187,5 @@ The source code for this plugin is open and available on GitHub for audit. While
 
 ## Changelog & contributing
 
-- See [`CHANGELOG.md`](./CHANGELOG.md) for the full version history.
-- See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for development setup, the `make` targets, and the release process.
+- See [`Changelog.md`](./Changelog.md) for the full version history.
+- See [`Contributing.md`](./Contributing.md) for development setup, the `make` targets, and the release process.

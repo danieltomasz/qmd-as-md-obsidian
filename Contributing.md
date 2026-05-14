@@ -1,4 +1,4 @@
-# Contributing to QMD as Markdown
+# Contributing to qmd as md
 
 ## Development setup
 
