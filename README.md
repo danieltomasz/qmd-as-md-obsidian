@@ -1,4 +1,4 @@
-# qmd as markdown
+# qmd as md
 
 A plugin for [Obsidian](https://obsidian.md) that allows seamless editing of QMD files as if they were Markdown.
 

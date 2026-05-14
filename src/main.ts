@@ -277,7 +277,8 @@ export default class QmdAsMdPlugin extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const loaded = (await this.loadData()) as Partial<QmdPluginSettings> | null;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
   }
 
   async saveSettings() {
@@ -394,7 +395,7 @@ export default class QmdAsMdPlugin extends Plugin {
       if (!currentFile || currentFile.path !== pdfTFile.path) {
         await leaf.openFile(pdfTFile, { active: false });
       }
-      this.app.workspace.revealLeaf(leaf);
+      await this.app.workspace.revealLeaf(leaf);
       return leaf;
     } catch (err) {
       console.error('[qmd-as-md] Failed to open PDF preview in native viewer:', err);
@@ -424,7 +425,14 @@ export default class QmdAsMdPlugin extends Plugin {
     // 'webviewer' view type. If the user has it disabled, setViewState
     // silently fails / leaves an empty leaf, and the user is left
     // wondering why nothing opened. Detect and report instead.
-    const internalPlugins = (this.app as any).internalPlugins;
+    const internalPlugins = (
+      this.app as App & {
+        internalPlugins?: {
+          getEnabledPluginById?: (id: string) => unknown;
+          plugins?: Record<string, { enabled?: boolean } | undefined>;
+        };
+      }
+    ).internalPlugins;
     const webviewerOn =
       internalPlugins?.getEnabledPluginById?.('webviewer') != null ||
       internalPlugins?.plugins?.webviewer?.enabled === true;
@@ -451,7 +459,7 @@ export default class QmdAsMdPlugin extends Plugin {
         active: true,
         state: { url },
       });
-      this.app.workspace.revealLeaf(leaf);
+      await this.app.workspace.revealLeaf(leaf);
     } catch (err) {
       console.error('[qmd-as-md] Failed to open preview in webviewer:', err);
       new Notice(
@@ -494,7 +502,7 @@ export default class QmdAsMdPlugin extends Plugin {
       leaf = workspace.getRightLeaf(false);
       await leaf?.setViewState({ type: QMD_OUTLINE_VIEW, active: true });
     }
-    if (leaf) workspace.revealLeaf(leaf);
+    if (leaf) await workspace.revealLeaf(leaf);
     this.refreshOutlineViews();
   }
 
@@ -866,78 +874,80 @@ export default class QmdAsMdPlugin extends Plugin {
         );
       });
 
-      quartoProcess.on('close', async (code: number | null, signal: NodeJS.Signals | null) => {
-        renderStdout.flush(); // release any final partial line
-        renderStderr.flush();
+      quartoProcess.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+        void (async () => {
+          renderStdout.flush(); // release any final partial line
+          renderStderr.flush();
 
-        // A clean exit is code 0. Anything else is a failure, except a
-        // termination by SIGTERM/SIGKILL — that means the process was
-        // intentionally cancelled (matching the preview handler, which
-        // suppresses notices for those signals). Stay quiet then.
-        if (code === 0) {
-          // fall through to the success path below
-        } else if (code === null && (signal === 'SIGTERM' || signal === 'SIGKILL')) {
-          console.error(`[qmd-as-md] Quarto render cancelled (${signal}).`);
-          return;
-        } else {
-          const exitLabel = code !== null
-            ? `exit ${code}`
-            : signal
-              ? `terminated by ${signal}`
-              : 'terminated';
-          // The full output was already streamed line-by-line through
-          // console.log / console.error as it arrived — no need to
-          // re-dump it. Surface the actual ERROR: line(s) in the Notice so
-          // the user sees the cause (bad YAML, missing engine, ...) without
-          // having to open the developer console.
-          console.error(`[qmd-as-md] Quarto render failed (${exitLabel}).`);
-          const reason = errorLines.length > 0
-            ? errorLines.join('\n')
-            : 'Check the developer console for details.';
-          new Notice(`Quarto render failed (${exitLabel}).\n${reason}`, 15000);
-          return;
-        }
+          // A clean exit is code 0. Anything else is a failure, except a
+          // termination by SIGTERM/SIGKILL — that means the process was
+          // intentionally cancelled (matching the preview handler, which
+          // suppresses notices for those signals). Stay quiet then.
+          if (code === 0) {
+            // fall through to the success path below
+          } else if (code === null && (signal === 'SIGTERM' || signal === 'SIGKILL')) {
+            console.error(`[qmd-as-md] Quarto render cancelled (${signal}).`);
+            return;
+          } else {
+            const exitLabel = code !== null
+              ? `exit ${code}`
+              : signal
+                ? `terminated by ${signal}`
+                : 'terminated';
+            // The full output was already streamed line-by-line through
+            // console.log / console.error as it arrived — no need to
+            // re-dump it. Surface the actual ERROR: line(s) in the Notice so
+            // the user sees the cause (bad YAML, missing engine, ...) without
+            // having to open the developer console.
+            console.error(`[qmd-as-md] Quarto render failed (${exitLabel}).`);
+            const reason = errorLines.length > 0
+              ? errorLines.join('\n')
+              : 'Check the developer console for details.';
+            new Notice(`Quarto render failed (${exitLabel}).\n${reason}`, 15000);
+            return;
+          }
 
-        const sourceDir = file.parent?.path ?? '';
-        const outputVaultPath = normalizePath(
-          detectedOutputBasename
-            ? (sourceDir ? `${sourceDir}/${detectedOutputBasename}` : detectedOutputBasename)
-            : guessedPdfPath
-        );
-
-        const outputTFile = await this.waitForVaultFile(outputVaultPath);
-
-        if (!outputTFile) {
-          new Notice(
-            `Quarto rendered, but ${outputVaultPath} did not appear in the vault within the timeout. Check Quarto's output-dir or vault sync.`
+          const sourceDir = file.parent?.path ?? '';
+          const outputVaultPath = normalizePath(
+            detectedOutputBasename
+              ? (sourceDir ? `${sourceDir}/${detectedOutputBasename}` : detectedOutputBasename)
+              : guessedPdfPath
           );
-          return;
-        }
 
-        const isPdf = outputVaultPath.toLowerCase().endsWith('.pdf');
+          const outputTFile = await this.waitForVaultFile(outputVaultPath);
 
-        if (!this.settings.openPdfInObsidian || !isPdf) {
-          new Notice(
-            isPdf
-              ? `PDF rendered: ${outputVaultPath}`
-              : `Rendered: ${outputVaultPath} (Obsidian's built-in viewer only handles PDFs).`
-          );
-          return;
-        }
+          if (!outputTFile) {
+            new Notice(
+              `Quarto rendered, but ${outputVaultPath} did not appear in the vault within the timeout. Check Quarto's output-dir or vault sync.`
+            );
+            return;
+          }
 
-        try {
-          const leaf = existingLeaf?.parent != null
-            ? existingLeaf
-            : this.app.workspace.getLeaf('split', 'vertical');
-          await leaf.openFile(outputTFile, { active: false });
-          this.app.workspace.revealLeaf(leaf);
-          new Notice(`Opened ${outputVaultPath}`);
-        } catch (err) {
-          console.error('Failed to open PDF in Obsidian:', err);
-          new Notice(
-            `PDF rendered at ${outputVaultPath}, but Obsidian could not open it (no PDF viewer registered?).`
-          );
-        }
+          const isPdf = outputVaultPath.toLowerCase().endsWith('.pdf');
+
+          if (!this.settings.openPdfInObsidian || !isPdf) {
+            new Notice(
+              isPdf
+                ? `PDF rendered: ${outputVaultPath}`
+                : `Rendered: ${outputVaultPath} (Obsidian's built-in viewer only handles PDFs).`
+            );
+            return;
+          }
+
+          try {
+            const leaf = existingLeaf?.parent != null
+              ? existingLeaf
+              : this.app.workspace.getLeaf('split', 'vertical');
+            await leaf.openFile(outputTFile, { active: false });
+            await this.app.workspace.revealLeaf(leaf);
+            new Notice(`Opened ${outputVaultPath}`);
+          } catch (err) {
+            console.error('Failed to open PDF in Obsidian:', err);
+            new Notice(
+              `PDF rendered at ${outputVaultPath}, but Obsidian could not open it (no PDF viewer registered?).`
+            );
+          }
+        })();
       });
     } catch (error) {
       console.error('Failed to render Quarto PDF:', error);
