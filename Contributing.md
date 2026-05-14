@@ -14,59 +14,91 @@ To contribute or customize the plugin:
 4. Copy `manifest.json`, `main.js`, and `styles.css` to a subfolder in your plugins directory: `<vault>/.obsidian/plugins/<plugin-name>/`
 5. Reload Obsidian to apply changes.
 
-Alternatively, clone the repository directly into your plugins folder. After installing dependencies, run `npm run dev` to enable watch mode for live compilation. Reload Obsidian (`Ctrl + R`) to view updates.
+For live development, run `npm run dev` to start watch-mode compilation, and point it at a **dedicated test vault** — not your real one. The repository's `node_modules` and `.git` do not belong inside a vault, and a synced vault (Obsidian Sync, iCloud, git) will try to sync them. Two safe layouts:
+
+- Clone the repository into `<test-vault>/.obsidian/plugins/<plugin-id>/` directly. Acceptable only because the test vault is disposable.
+- Keep the repository anywhere outside a vault and symlink the build outputs (`main.js`, `manifest.json`, `styles.css`) into `<test-vault>/.obsidian/plugins/<plugin-id>/`.
+
+Reload Obsidian (`Ctrl + R`) after each rebuild to load the changes.
+
+For quick manual testing against a real vault, `make release-local` builds the plugin into `release-local/<plugin-id>/` — a folder laid out exactly like `<vault>/.obsidian/plugins/<plugin-id>/`, ready to copy across.
 
 ## Make targets
 
 The `makefile` wraps common tasks. Run `make help` for the list:
 
-| Target              | What it does                                                                                |
-|---------------------|---------------------------------------------------------------------------------------------|
-| `make build`        | Install deps (`npm ci` when `package-lock.json` exists, otherwise `npm install`), build `main.js`, then zip. |
-| `make zip`          | Bundle `main.js` + `manifest.json` into `qmd-as-md.zip`.                                    |
-| `make clean`        | Wipe `node_modules` and build artefacts.                                                    |
-| `make release-beta` | Publish a GitHub pre-release using the version in `manifest-beta.json`.                     |
-| `make release-stable` | Publish a GitHub release using the version in `manifest.json`.                            |
+- **`make build`** — install deps (`npm ci` when `package-lock.json` exists, otherwise `npm install`), build `main.js`, then zip.
+- **`make zip`** — bundle `main.js` + `manifest.json` + `styles.css` into `qmd-as-md.zip`.
+- **`make clean`** — wipe `node_modules` and build artefacts.
+- **`make release-local`** — build into `release-local/<plugin-id>/` for manual install (`STABLE=1` to use `manifest.json`).
+- **`make sync-version`** — write the manifest version into `package.json` (`STABLE=1` to read `manifest.json`).
+- **`make tag-beta`** — tag + push the `manifest-beta.json` version. The release workflow then publishes the pre-release.
+- **`make tag-stable`** — tag + push the `manifest.json` version. The release workflow then publishes the release.
 
 ## Cutting a release
+
+Releases are built and published by `.github/workflows/release.yml`, which fires when a version tag is pushed. The `make tag-*` targets only create and push the tag — the workflow does the build and upload.
 
 Two release channels share the same `main` branch:
 
 - **Stable** — `manifest.json` is the source of truth (e.g. `0.0.3`). Goes to the community plugin store.
-- **Beta** — `manifest-beta.json` is the source of truth (e.g. `0.1.0-rc.1`). Distributed only via [BRAT](https://github.com/TfTHacker/obsidian42-brat). Pre-release semver suffixes (`-rc.x`, `-beta.x`) are accepted by BRAT but rejected by the community store, so betas live exclusively here.
+- **Beta** — `manifest-beta.json` is the source of truth (e.g. `0.2.0-rc.8`). Distributed only via [BRAT](https://github.com/TfTHacker/obsidian42-brat). Pre-release semver suffixes (`-rc.x`, `-beta.x`) are accepted by BRAT but rejected by the community store, so betas live exclusively here.
+
+The workflow picks the channel from the tag itself: a tag containing a hyphen (`0.2.0-rc.8`) is published as a GitHub **pre-release** with `manifest-beta.json` shipped under the name `manifest.json` — what BRAT's beta channel expects. A plain tag (`0.2.0`) is published as a normal release using `manifest.json`. Tags carry **no `v` prefix** (Obsidian convention; enforced by `.npmrc`'s `tag-version-prefix = ""`).
 
 To publish a release:
 
 ```bash
-# Beta — bump manifest-beta.json first, then:
-make release-beta                          # interactive prompt for notes
-make release-beta NOTES="Fixed leaf bug"   # non-interactive
+# Beta — bump the version in manifest-beta.json first, then:
+make sync-version          # mirror that version into package.json
+git commit -am "release: 0.2.0-rc.9"
+make tag-beta              # tags 0.2.0-rc.9 and pushes it
 
-# Stable — bump manifest.json first, then:
-make release-stable
+# Stable — bump the version in manifest.json first, then:
+make sync-version STABLE=1
+git commit -am "release: 0.2.0"
+make tag-stable
 ```
 
-Both targets:
+Each `tag-*` target:
 
-1. Check that `gh`, `node`, `npm`, and `zip` are on `PATH`.
-2. Read the version from the appropriate manifest, and refuse to overwrite an existing tag.
-3. Build `main.js` fresh (`npm ci` if `package-lock.json` exists, otherwise `npm install`).
-4. Create a GitHub release tagged with the version (no `v` prefix — Obsidian convention) and attach `main.js` plus a correctly-versioned `manifest.json`. The beta target stages `manifest-beta.json` into a tempdir under the literal name `manifest.json` so BRAT finds the asset it expects.
-5. Mark beta releases as `--prerelease`.
+1. Reads the version from the appropriate manifest.
+2. Refuses to run if the working tree has uncommitted changes — a tag must point at a committed state.
+3. Refuses to overwrite an existing tag.
+4. Creates an annotated tag and pushes it to `origin`.
 
-Requirements: `gh` authenticated against the repo, working tree clean.
+The workflow then checks out the tag, runs `npm install && npm run build`, selects the manifest for the channel, and attaches `main.js`, `manifest.json`, and `styles.css` to the GitHub release.
 
 After a beta release, BRAT users can hit **Check for updates to all beta plugins** to pull it.
 
+> `styles.css` is a hand-written source file (not a build artefact). It must stay tracked in git, and both the workflow and `make zip` ship it. Don't add it back to `.gitignore`.
+
 ## Troubleshooting the release flow
 
-### `Could not read version from manifest-beta.json` / empty version
+### `Failed to read version from <manifest>` / empty version
 
-The recipe runs `node -p "require('./manifest-beta.json').version"` and treats an empty result as a hard error. Common causes:
+The `tag-*` targets run `node -p "require('./<manifest>').version"` and treat an empty result as a hard error. Common causes:
 
-- **Wrong working directory.** The recipe expects to be run from the repo root. `cd` to it (`pwd` should show the directory containing `manifest-beta.json`) before running `make`.
-- **Manifest missing or malformed.** The recipe now prints the real Node.js error before bailing — read the message rather than the generic line.
-- **`gh` not authenticated for this repo.** Run `gh auth status` and `gh repo set-default danieltomasz/qmd-as-md-obsidian` if needed.
+- **Wrong working directory.** Targets expect to be run from the repo root. `cd` there (`pwd` should show the directory containing the manifests) before running `make`.
+- **Manifest missing or malformed.** The recipe prints the real Node.js error before bailing — read the message rather than the generic line.
+
+### `Working tree has uncommitted changes`
+
+`tag-beta` / `tag-stable` refuse to tag a dirty tree. Commit or stash first — including the `package.json` change from `make sync-version`.
+
+### The tag pushed but no release appeared
+
+The release is GitHub Actions work, not local. Check the **Actions** tab for the `Release` workflow run. A failed run there (not a local error) is the cause. Confirm the tag name matches the manifest version exactly, with no `v` prefix.
+
+### BRAT says "this is not an Obsidian plugin"
+
+BRAT walks the latest GitHub release looking for an asset named literally `manifest.json`. The workflow copies `manifest-beta.json` to `manifest.json` before upload for prerelease tags, so the asset name is correct. If BRAT still rejects a release, inspect the assets:
+
+```bash
+gh release view <tag> | grep -i asset
+```
+
+The list must contain `main.js`, `manifest.json`, and `styles.css` (exact spelling).
 
 ### Variables silently lost between recipe lines (macOS default Make)
 
@@ -76,19 +108,5 @@ If you want a modern Make on macOS:
 
 ```bash
 brew install make
-gmake release-beta NOTES="…"      # invoked as `gmake`, not `make`
+gmake tag-beta      # invoked as `gmake`, not `make`
 ```
-
-### BRAT says "this is not an Obsidian plugin"
-
-BRAT walks the latest GitHub release looking for an asset named literally `manifest.json`. The previous version of this Makefile relied on `gh release create`'s `path#displayname` rename syntax, which silently no-op'd in some `gh` CLI versions and uploaded the asset under its real basename (e.g. `qmd-release-manifest.json`) — invisible to BRAT. The current recipe sidesteps the rename mechanism by staging the file under the correct name in a tempdir before upload. If BRAT still rejects a release, inspect the assets:
-
-```bash
-gh release view <tag> | grep -i asset
-```
-
-The list must contain both `main.js` and `manifest.json` (exact spelling).
-
-### Release was created but `gh release create` failed silently
-
-Older versions of the recipe used long `\`-joined chains without `set -e`. A failed `npm install`/`npm run build` or missing tool would let the chain continue past the failure, eventually erroring on `gh release create` with no clear cause. The current recipe sets `set -e` at the start of each release target, validates each tool with `command -v`, and verifies `main.js` was produced before invoking `gh`. If something still goes wrong, the first error surfaced by the recipe is the real one — read up, not down.

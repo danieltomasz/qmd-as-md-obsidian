@@ -1,0 +1,47 @@
+/* Quarto outline sidebar view (QmdOutlineView) */
+
+.qmd-outline {
+  padding: var(--size-4-2) var(--size-4-1);
+}
+
+.qmd-outline-empty {
+  padding: var(--size-4-2) var(--size-4-3);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.qmd-outline-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.qmd-outline-item {
+  padding: var(--size-2-1) var(--size-4-3);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.qmd-outline-item:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.qmd-outline-item:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
+  color: var(--text-normal);
+}
+
+/* Indentation by heading level — driven by the data-level attribute so the
+   view itself sets no inline styles. Each level adds one --size-4-4 step. */
+.qmd-outline-item[data-level='1'] { padding-left: var(--size-4-3); }
+.qmd-outline-item[data-level='2'] { padding-left: calc(var(--size-4-3) + var(--size-4-4)); }
+.qmd-outline-item[data-level='3'] { padding-left: calc(var(--size-4-3) + var(--size-4-4) * 2); }
+.qmd-outline-item[data-level='4'] { padding-left: calc(var(--size-4-3) + var(--size-4-4) * 3); }
+.qmd-outline-item[data-level='5'] { padding-left: calc(var(--size-4-3) + var(--size-4-4) * 4); }
+.qmd-outline-item[data-level='6'] { padding-left: calc(var(--size-4-3) + var(--size-4-4) * 5); }

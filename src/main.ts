@@ -3,12 +3,14 @@ import {
   Notice,
   TFile,
   FileView,
+  ItemView,
   MarkdownView,
   PluginSettingTab,
   App,
   Setting,
   FileSystemAdapter,
   WorkspaceLeaf,
+  debounce,
   normalizePath,
 } from 'obsidian';
 import { spawn, ChildProcess } from 'child_process';
@@ -64,12 +66,83 @@ function makeLineProcessor(handle: (line: string) => void): LineProcessor {
   return proc;
 }
 
+// --- Quarto outline -------------------------------------------------------
+//
+// Obsidian's core Outline panel reads headings from metadataCache, which
+// only parses .md files — a .qmd opened via registerExtensions still gets
+// no heading cache, so the panel stays blank (issue #3). parseQmdHeadings
+// scans the file text directly: ATX headings (`# ...`, up to 3 spaces of
+// indent per CommonMark) only — setext headings (underlined with === / ---)
+// are intentionally not supported, they are vanishingly rare in Quarto and
+// the --- form collides with YAML/frontmatter syntax. The scan skips the
+// YAML frontmatter block and fenced code blocks (``` / ~~~) so a `#` line
+// inside an R/Python cell is not mistaken for a heading.
+
+const QMD_OUTLINE_VIEW = 'qmd-outline-view';
+
+interface QmdHeading {
+  level: number;
+  text: string;
+  line: number; // 0-based line index in the source
+}
+
+function parseQmdHeadings(content: string): QmdHeading[] {
+  const lines = content.split(/\r?\n/);
+  const headings: QmdHeading[] = [];
+  let inFrontmatter = false;
+  // Open code-fence state. Per CommonMark, a fence closes only on the same
+  // marker char with a run at least as long as the opener — so a longer
+  // ```` inside a ``` block, or a ~~~ inside a ``` block, does not close it.
+  let fenceMarker: string | null = null; // '`' or '~' while inside a code block
+  let fenceLength = 0; // length of the run that opened the current block
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // YAML frontmatter is only frontmatter when --- is the very first line.
+    if (i === 0 && /^---\s*$/.test(line)) {
+      inFrontmatter = true;
+      continue;
+    }
+    if (inFrontmatter) {
+      if (/^(---|\.\.\.)\s*$/.test(line)) inFrontmatter = false;
+      continue;
+    }
+
+    // Fenced code block: a run of >=3 backticks or tildes, up to 3 spaces
+    // of indent.
+    const fence = line.match(/^\s{0,3}(`{3,}|~{3,})/);
+    if (fence) {
+      const run = fence[1];
+      const marker = run[0];
+      if (fenceMarker === null) {
+        fenceMarker = marker;
+        fenceLength = run.length;
+      } else if (marker === fenceMarker && run.length >= fenceLength) {
+        fenceMarker = null;
+        fenceLength = 0;
+      }
+      continue;
+    }
+    if (fenceMarker !== null) continue;
+
+    const h = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*$/);
+    if (h) {
+      // Drop a trailing pandoc/quarto attribute block: `## Title {#id .cls}`.
+      const text = h[2].replace(/\s*\{[^}]*\}\s*$/, '').trim();
+      if (text) headings.push({ level: h[1].length, text, line: i });
+    }
+  }
+  return headings;
+}
+
 interface QmdPluginSettings {
   quartoPath: string;
   enableQmdLinking: boolean;
   quartoTypst: string;
   openPdfInObsidian: boolean;
   previewInObsidian: boolean;
+  showOutline: boolean;
 }
 
 const DEFAULT_SETTINGS: QmdPluginSettings = {
@@ -78,11 +151,17 @@ const DEFAULT_SETTINGS: QmdPluginSettings = {
   quartoTypst: '',
   openPdfInObsidian: false,
   previewInObsidian: true,
+  showOutline: false,
 };
 
 export default class QmdAsMdPlugin extends Plugin {
   settings: QmdPluginSettings;
   activePreviewProcesses: Map<string, ChildProcess> = new Map();
+  // The .qmd file the outline should describe. Tracked separately from the
+  // active leaf: clicking inside the outline sidebar makes *it* the active
+  // leaf, so the outline must remember the last real .qmd rather than ask
+  // "what is active now?" each render.
+  lastActiveQuartoFile: TFile | null = null;
 
   async onload() {
     try {
@@ -116,6 +195,29 @@ export default class QmdAsMdPlugin extends Plugin {
       this.registerRenderCommand('render-quarto-pdf', 'Render Quarto (use YAML format)');
       this.registerRenderCommand('render-quarto-pdf-typst', 'Render Quarto to PDF (Typst engine)', 'typst');
       this.registerRenderCommand('render-quarto-pdf-latex', 'Render Quarto to PDF (LaTeX engine)', 'pdf');
+
+      this.registerView(QMD_OUTLINE_VIEW, (leaf) => new QmdOutlineView(leaf, this));
+
+      this.addCommand({
+        id: 'open-quarto-outline',
+        name: 'Open Quarto outline',
+        callback: () => this.activateOutlineView(),
+      });
+
+      // Keep any open outline view in sync with the focused file and its
+      // edits. Debounced so a burst of keystrokes re-parses once it settles.
+      const refresh = debounce(() => {
+        this.trackActiveQuartoFile();
+        this.refreshOutlineViews();
+      }, 250, true);
+      this.registerEvent(this.app.workspace.on('active-leaf-change', refresh));
+      this.registerEvent(this.app.workspace.on('editor-change', refresh));
+
+      // Opt-in: only auto-open the outline when the user enabled it. The
+      // command above always works regardless of this setting.
+      if (this.settings.showOutline) {
+        this.app.workspace.onLayoutReady(() => this.activateOutlineView());
+      }
     } catch (error) {
       console.error('Error loading plugin:', error);
       new Notice('Failed to load the QMD as md plugin. Check the developer console for details.');
@@ -278,6 +380,49 @@ export default class QmdAsMdPlugin extends Plugin {
 
   registerQmdExtension() {
     this.registerExtensions(['qmd'], 'markdown');
+  }
+
+  // Open the Quarto outline in the right sidebar, reusing an existing
+  // outline leaf if one is already open.
+  async activateOutlineView(): Promise<void> {
+    const { workspace } = this.app;
+    // Capture the current .qmd before opening the outline — setViewState
+    // with active:true makes the outline the active leaf, after which the
+    // active markdown view is gone.
+    this.trackActiveQuartoFile();
+    let leaf: WorkspaceLeaf | null = workspace.getLeavesOfType(QMD_OUTLINE_VIEW)[0] ?? null;
+    if (!leaf) {
+      leaf = workspace.getRightLeaf(false);
+      await leaf?.setViewState({ type: QMD_OUTLINE_VIEW, active: true });
+    }
+    if (leaf) workspace.revealLeaf(leaf);
+    this.refreshOutlineViews();
+  }
+
+  // Remember the active .qmd file. Called whenever the active leaf changes;
+  // a non-.qmd active leaf (including the outline sidebar itself) leaves the
+  // last value untouched so the outline keeps describing that file.
+  trackActiveQuartoFile(): void {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (view?.file && this.isQuartoFile(view.file)) {
+      this.lastActiveQuartoFile = view.file;
+    }
+  }
+
+  // Re-render every open outline view. No-op when none are open.
+  refreshOutlineViews(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(QMD_OUTLINE_VIEW)) {
+      if (leaf.view instanceof QmdOutlineView) {
+        leaf.view.render();
+      }
+    }
+  }
+
+  // Close any open outline views — used when the user turns the setting off.
+  detachOutlineViews(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(QMD_OUTLINE_VIEW)) {
+      leaf.detach();
+    }
   }
 
   async togglePreview(file: TFile) {
@@ -653,6 +798,116 @@ export default class QmdAsMdPlugin extends Plugin {
   }
 }
 
+// Sidebar outline for the active .qmd file. Re-renders on demand (the
+// plugin wires it to active-leaf-change and editor-change). Active-file
+// only by design — Quarto `{{< include >}}` targets are not resolved.
+class QmdOutlineView extends ItemView {
+  plugin: QmdAsMdPlugin;
+
+  constructor(leaf: WorkspaceLeaf, plugin: QmdAsMdPlugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+
+  getViewType(): string {
+    return QMD_OUTLINE_VIEW;
+  }
+
+  getDisplayText(): string {
+    return 'Quarto outline';
+  }
+
+  getIcon(): string {
+    return 'list';
+  }
+
+  async onOpen(): Promise<void> {
+    // The outline may already be the active leaf at this point (opened via
+    // command/setting), so capture the underlying .qmd before rendering.
+    this.plugin.trackActiveQuartoFile();
+    this.render();
+  }
+
+  // Find the open markdown view for a file, regardless of which leaf is
+  // active. .qmd files open as 'markdown' leaves (registerExtensions).
+  private markdownViewFor(file: TFile): MarkdownView | null {
+    for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+      if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
+        return leaf.view;
+      }
+    }
+    return null;
+  }
+
+  render(): void {
+    const container = this.contentEl;
+    container.empty();
+    container.addClass('qmd-outline');
+
+    const file = this.plugin.lastActiveQuartoFile;
+    if (!file) {
+      container.createDiv({
+        cls: 'qmd-outline-empty',
+        text: 'No Quarto (.qmd) file is active.',
+      });
+      return;
+    }
+
+    // Read live content from the open editor rather than the active leaf —
+    // clicking inside this sidebar makes it the active leaf.
+    const mdView = this.markdownViewFor(file);
+    if (!mdView) {
+      container.createDiv({
+        cls: 'qmd-outline-empty',
+        text: `Open ${file.name} to see its outline.`,
+      });
+      return;
+    }
+
+    const headings = parseQmdHeadings(mdView.editor.getValue());
+    if (headings.length === 0) {
+      container.createDiv({
+        cls: 'qmd-outline-empty',
+        text: 'No headings in this file.',
+      });
+      return;
+    }
+
+    const list = container.createDiv({ cls: 'qmd-outline-list' });
+    for (const heading of headings) {
+      const item = list.createDiv({
+        cls: 'qmd-outline-item',
+        text: heading.text,
+        // Keyboard-accessible: focusable, announced as a link, and the
+        // keydown handler below makes Enter/Space activate it.
+        attr: { tabindex: '0', role: 'link' },
+      });
+      // Indentation is driven by CSS off this attribute — no inline styles.
+      item.dataset.level = String(heading.level);
+
+      const jumpTo = () => {
+        // Resolve the editor by file, not by "active leaf" — the click
+        // itself just moved focus to this sidebar.
+        const view = this.markdownViewFor(file);
+        if (!view) return;
+        const pos = { line: heading.line, ch: 0 };
+        this.app.workspace.setActiveLeaf(view.leaf, { focus: true });
+        view.editor.setCursor(pos);
+        view.editor.scrollIntoView({ from: pos, to: pos }, true);
+        view.editor.focus();
+      };
+
+      item.addEventListener('click', jumpTo);
+      item.addEventListener('keydown', (evt) => {
+        if (evt.key === 'Enter' || evt.key === ' ') {
+          evt.preventDefault();
+          jumpTo();
+        }
+      });
+    }
+  }
+}
+
 class QmdSettingTab extends PluginSettingTab {
   plugin: QmdAsMdPlugin;
 
@@ -737,6 +992,28 @@ class QmdSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             this.plugin.settings.previewInObsidian = value;
             await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Show Quarto outline')
+      .setDesc(
+        "Add a sidebar outline of the active .qmd file's headings (Obsidian's " +
+          'core Outline panel cannot read .qmd files). Active file only — ' +
+          'headings from included files are not listed. The "Open Quarto ' +
+          'outline" command works regardless of this toggle.'
+      )
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.showOutline)
+          .onChange(async (value) => {
+            this.plugin.settings.showOutline = value;
+            await this.plugin.saveSettings();
+            if (value) {
+              await this.plugin.activateOutlineView();
+            } else {
+              this.plugin.detachOutlineViews();
+            }
           })
       );
   }
