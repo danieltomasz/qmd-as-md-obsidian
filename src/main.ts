@@ -643,6 +643,13 @@ export default class QmdAsMdPlugin extends Plugin {
         return;
       }
 
+      // A running `quarto preview` keeps recompiling the same source and
+      // writes to overlapping output paths. Stop it before a one-shot
+      // render so the two Quarto processes do not fight over the output.
+      if (this.activePreviewProcesses.has(file.path)) {
+        await this.stopPreview(file);
+      }
+
       const filePath = this.getVaultFullPath(abstractFile);
       if (!filePath) return;
       const workingDir = path.dirname(filePath);
