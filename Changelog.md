@@ -2,6 +2,32 @@
 
 All notable changes to **QMD as Markdown** are documented here. Pre-release versions (`-rc.x`, `-beta.x`) are distributed only via [BRAT](https://github.com/TfTHacker/obsidian42-brat); stable releases go to the Obsidian community plugin store.
 
+## 0.3.1
+
+### Changed
+
+- YAML file editor: `Tab` / `Shift+Tab` now indent and dedent via CodeMirror's
+  commands instead of always inserting two spaces (no dedent before).
+- YAML file editor: reduced font size to match Obsidian's UI scale — was
+  noticeably larger than the rest of the app.
+- YAML highlighting now follows YAML 1.2 (as Quarto does): only `true`,
+  `false`, `null`, and `~` highlight as booleans/null. `yes`/`no`/`on`/`off`
+  are treated as plain scalars.
+- The "no active file" notice mentions `.md` too when **Preview and render
+  Markdown files with Quarto** is enabled.
+
+### Fixed
+
+- Render close handler no longer swallows errors as unhandled rejections.
+
+### Internal
+
+- Adjusted code to better follow Obsidian plugin guidelines (API usage,
+  floating promises, default-hotkey removal) ahead of community-store
+  submission.
+- Added `versions.json`; split the dependency tree into build-only deps vs
+  ESLint tooling; committed `package-lock.json`. See `Contributing.md`.
+
 ## 0.3.0
 
 - Allow Quarto preview and render commands to operate on Markdown files in Quarto projects when enabled via settings.

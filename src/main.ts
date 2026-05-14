@@ -310,7 +310,11 @@ export default class QmdAsMdPlugin extends Plugin {
     const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
     const file = activeView?.file;
     if (!file) {
-      new Notice('Quarto commands require an active .qmd file.');
+      new Notice(
+        this.settings.previewMarkdownFiles
+          ? 'Quarto commands require an active .qmd or .md file.'
+          : 'Quarto commands require an active .qmd file.'
+      );
       return null;
     }
 
@@ -947,7 +951,9 @@ export default class QmdAsMdPlugin extends Plugin {
               `PDF rendered at ${outputVaultPath}, but Obsidian could not open it (no PDF viewer registered?).`
             );
           }
-        })();
+        })().catch((err) => {
+          console.error('[qmd-as-md] Quarto render close handler failed:', err);
+        });
       });
     } catch (error) {
       console.error('Failed to render Quarto PDF:', error);
@@ -1166,7 +1172,9 @@ function decorateYamlScalar(builder: RangeSetBuilder<Decoration>, scalarStart: n
 function yamlScalarClass(token: string): string {
   if (/^['"].*['"]$/.test(token)) return 'qmd-yaml-string';
   if (/^[&*][A-Za-z0-9_-]+$/.test(token)) return 'qmd-yaml-anchor';
-  if (/^(true|false|yes|no|on|off|null|~)$/i.test(token)) return 'qmd-yaml-boolean';
+  // YAML 1.2 (what Quarto/Pandoc use): only true/false/null/~ are
+  // booleans/null. yes/no/on/off are plain scalars, not booleans.
+  if (/^(true|false|null|~)$/i.test(token)) return 'qmd-yaml-boolean';
   if (/^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(token)) return 'qmd-yaml-number';
   if (/^[>|][+-]?$/.test(token)) return 'qmd-yaml-block';
   if (/^(html|pdf|typst|latex|beamer|revealjs|docx|odt|epub|gfm|jats|dashboard)$/i.test(token)) {
