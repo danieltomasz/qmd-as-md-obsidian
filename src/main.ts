@@ -71,7 +71,10 @@ function makeLineProcessor(handle: (line: string) => void): LineProcessor {
 // Obsidian's core Outline panel reads headings from metadataCache, which
 // only parses .md files — a .qmd opened via registerExtensions still gets
 // no heading cache, so the panel stays blank (issue #3). parseQmdHeadings
-// scans the file text directly: ATX headings (`# ...`) only, skipping the
+// scans the file text directly: ATX headings (`# ...`, up to 3 spaces of
+// indent per CommonMark) only — setext headings (underlined with === / ---)
+// are intentionally not supported, they are vanishingly rare in Quarto and
+// the --- form collides with YAML/frontmatter syntax. The scan skips the
 // YAML frontmatter block and fenced code blocks (``` / ~~~) so a `#` line
 // inside an R/Python cell is not mistaken for a heading.
 
@@ -87,7 +90,11 @@ function parseQmdHeadings(content: string): QmdHeading[] {
   const lines = content.split(/\r?\n/);
   const headings: QmdHeading[] = [];
   let inFrontmatter = false;
+  // Open code-fence state. Per CommonMark, a fence closes only on the same
+  // marker char with a run at least as long as the opener — so a longer
+  // ```` inside a ``` block, or a ~~~ inside a ``` block, does not close it.
   let fenceMarker: string | null = null; // '`' or '~' while inside a code block
+  let fenceLength = 0; // length of the run that opened the current block
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -103,17 +110,23 @@ function parseQmdHeadings(content: string): QmdHeading[] {
     }
 
     // Fenced code block: a run of >=3 backticks or tildes, up to 3 spaces
-    // of indent. Same marker char toggles the block off.
+    // of indent.
     const fence = line.match(/^\s{0,3}(`{3,}|~{3,})/);
     if (fence) {
-      const marker = fence[1][0];
-      if (fenceMarker === null) fenceMarker = marker;
-      else if (fenceMarker === marker) fenceMarker = null;
+      const run = fence[1];
+      const marker = run[0];
+      if (fenceMarker === null) {
+        fenceMarker = marker;
+        fenceLength = run.length;
+      } else if (marker === fenceMarker && run.length >= fenceLength) {
+        fenceMarker = null;
+        fenceLength = 0;
+      }
       continue;
     }
     if (fenceMarker !== null) continue;
 
-    const h = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    const h = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*$/);
     if (h) {
       // Drop a trailing pandoc/quarto attribute block: `## Title {#id .cls}`.
       const text = h[2].replace(/\s*\{[^}]*\}\s*$/, '').trim();

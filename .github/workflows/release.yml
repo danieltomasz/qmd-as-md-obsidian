@@ -31,6 +31,12 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           if [[ "$TAG" == *-* ]]; then
             echo "Prerelease tag $TAG — using manifest-beta.json"
+            if [ ! -f manifest-beta.json ]; then
+              echo "::error::Prerelease tag $TAG but manifest-beta.json is missing."
+              exit 1
+            fi
+            node -e "JSON.parse(require('fs').readFileSync('manifest-beta.json','utf8'))" \
+              || { echo "::error::manifest-beta.json is not valid JSON."; exit 1; }
             cp manifest-beta.json manifest.json
             echo "PRERELEASE=true" >> "$GITHUB_ENV"
           else
