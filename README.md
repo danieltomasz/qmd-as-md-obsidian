@@ -64,6 +64,10 @@ Re-running the render reuses the existing PDF tab — no tab stacking.
 
 The **Toggle Quarto preview** command (palette + ribbon icon `eye`, default hotkey `Ctrl+Shift+P`) spawns `quarto preview` on the active `.qmd`, which runs a live HTTP server that re-renders on every save.
 
+Setting **Preview and render Markdown files with Quarto** is off by default. Turn it on if you also want the preview and render commands to accept `.md` files when `_quarto.yml` exists in the file's folder or any ancestor up to the vault root.
+
+Setting **Show YAML files** is off by default. Turn it on to make `.yml` and `.yaml` files, including `_quarto.yml`, visible and editable in Obsidian using a CodeMirror editor with Quarto-oriented YAML highlighting.
+
 Setting **Open Quarto preview in Obsidian** decides where the generic command and ribbon preview land:
 
 - **On** (default):

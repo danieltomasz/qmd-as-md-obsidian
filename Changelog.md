@@ -8,6 +8,8 @@ All notable changes to **QMD as Markdown** are documented here. Pre-release vers
 
 - **Quarto preview inside Obsidian.** PDF previews (`format: typst` / `pdf`) open in Obsidian's native PDF viewer; HTML and other previews open in the built-in **Web viewer** core plugin. Live reload from the running `quarto preview` is preserved in both cases. New **Open Quarto preview in Obsidian** setting controls the generic preview command and ribbon target.
 - **Explicit preview targets.** New **Toggle Quarto preview in Obsidian** and **Toggle Quarto preview in external browser** commands choose the preview destination without changing the default setting.
+- **Optional Markdown commands.** New **Preview and render Markdown files with Quarto** setting lets preview and render commands accept `.md` files when `_quarto.yml` exists in the file's folder or an ancestor up to the vault root, off by default.
+- **Optional YAML visibility.** New **Show YAML files** setting makes `.yml` and `.yaml` files visible and editable in Obsidian using a CodeMirror editor with Quarto-oriented YAML highlighting, off by default.
 - **Quarto outline view** (opt-in via the **Show Quarto outline** setting). Lists the headings of the active `.qmd` in a sidebar and jumps to them on click — Obsidian's core Outline panel cannot read `.qmd` files (issue #3). Active file only; included files are not resolved. Also available as the *Open Quarto outline* command.
 - **QUARTO_TYPST variable** setting, for pointing Quarto at a specific Typst install.
 
