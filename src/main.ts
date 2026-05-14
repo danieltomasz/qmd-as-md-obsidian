@@ -15,6 +15,7 @@ import {
 } from 'obsidian';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
+import { shell } from 'electron';
 
 // --- Quarto output plumbing -----------------------------------------------
 //
@@ -316,13 +317,19 @@ export default class QmdAsMdPlugin extends Plugin {
   }
 
   async openPreviewUrl(url: string) {
+    console.log('[qmd-as-md][diag] openPreviewUrl called. url:', url,
+      'previewInObsidian:', this.settings.previewInObsidian);
     new Notice(`Preview available at ${url}`);
 
     if (!this.settings.previewInObsidian) {
-      // Electron's renderer routes window.open for http(s) URLs through
-      // shell.openExternal, which lands in the user's default browser.
-      // Use activeWindow so popout windows resolve to the correct one.
-      activeWindow.open(url, '_blank');
+      // shell.openExternal hands the URL to the OS default browser. This
+      // is the reliable path — activeWindow.open('_blank') frequently
+      // opens nothing in Obsidian's renderer.
+      console.log('[qmd-as-md][diag] calling shell.openExternal; shell is:', typeof shell, shell);
+      shell.openExternal(url).then(
+        () => console.log('[qmd-as-md][diag] shell.openExternal resolved'),
+        (err) => console.error('[qmd-as-md][diag] shell.openExternal rejected:', err)
+      );
       return;
     }
 
@@ -362,7 +369,7 @@ export default class QmdAsMdPlugin extends Plugin {
       new Notice(
         "Could not open preview in Obsidian's web viewer. Falling back to external browser."
       );
-      activeWindow.open(url, '_blank');
+      void shell.openExternal(url);
     }
   }
 
@@ -566,6 +573,12 @@ export default class QmdAsMdPlugin extends Plugin {
 
         if (!previewUrl && line.includes('Browse at')) {
           const match = line.match(/Browse at\s+(http:\/\/[^\s]+)/);
+          console.log(
+            '[qmd-as-md][diag] Browse-at line seen.',
+            'matched:', match?.[1] ?? null,
+            'pdfPreviewPath:', pdfPreviewPath,
+            'previewInObsidian:', this.settings.previewInObsidian
+          );
           if (match && match[1]) {
             previewUrl = match[1];
             // If we already opened a native PDF preview, skip the
