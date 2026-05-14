@@ -14,6 +14,7 @@ This plugin originated in 2022 as a minimal change to a now-archived project by 
 - A sidebar **outline** of the active `.qmd` file's headings — Obsidian's core Outline panel cannot read `.qmd` files.
 - Optionally run the preview and render commands on `.md` files too, when they live inside a Quarto project (a folder with `_quarto.yml`).
 - Optional dedicated editor for `.yml` / `.yaml` files, with Quarto-oriented YAML syntax highlighting.
+- Optional dedicated editor for `.lua` files with minimal syntax highlighting — handy for Quarto/pandoc filter scripts.
 - Quarto errors surface as Obsidian notices, not just in the developer console.
 
 ## Usage
@@ -107,6 +108,35 @@ Setting **Preview and render Markdown files with Quarto** is off by default. Tur
 *(Since 0.3.)*
 
 Setting **Show YAML files** is off by default. Turn it on to make `.yml` and `.yaml` files — including `_quarto.yml` — visible and editable inside Obsidian, in a dedicated CodeMirror editor with Quarto-oriented YAML syntax highlighting.
+
+### Lua file editor
+
+*(Since 0.3.2.)*
+
+Setting **Show Lua files** is off by default. Turn it on to make `.lua` files visible and editable inside Obsidian, in a dedicated CodeMirror editor with minimal Lua syntax highlighting (comments, strings, numbers, keywords) — handy for editing Quarto/pandoc filter scripts without leaving Obsidian.
+
+### Obsidian callouts in Quarto output
+
+Quarto does not understand Obsidian's callout syntax (`> [!note]`) out of the box — it renders them as plain blockquotes. A small pandoc Lua filter bridges the gap, turning them into native Quarto callouts.
+
+1. Save [`obsidian-callouts.lua`][callouts-filter] into your Quarto project (next to `_quarto.yml` is fine).
+2. Add it to `_quarto.yml` — you can edit that file right inside Obsidian with the YAML file editor above:
+
+   ```yaml
+   filters:
+     - obsidian-callouts.lua
+   ```
+
+Now a callout written in Obsidian:
+
+```markdown
+> [!note] My title
+> body text
+```
+
+renders as a proper Quarto callout (`note`/`tip`/`warning`/`caution`/`important`, with title and `-`/`+` fold state) in HTML, PDF, and other formats. Requires Quarto ≥ 1.3.
+
+[callouts-filter]: https://gist.github.com/danieltomasz/31d298aca2969adaf60d8841b68005e2
 
 ## Alternatives
 
