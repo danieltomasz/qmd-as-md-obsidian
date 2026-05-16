@@ -2,7 +2,7 @@
 
 A plugin for [Obsidian](https://obsidian.md) that allows seamless editing of QMD files as if they were Markdown, plus rendering and live preview of `.qmd` files directly inside Obsidian via Quarto. `.md` files inside a Quarto project (folder with `_quarto.yml`) can also be rendered and previewed — opt-in via settings.
 
-QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. They work in editors like RStudio and VSCode and  might be compiled to target format files via pandoc.
+QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. They work in editors like RStudio and VSCode and  might be compiled to target format files via pandoc. For format-specific options (PDF, HTML, DOCX, reveal.js, etc.), see the [Quarto format reference](https://quarto.org/docs/reference/).
 
 This plugin requires Quarto to be installed locally and reachable on your shell `PATH`; if it is not auto-discovered, set its full path in **Settings → qmd as md → Quarto path** (e.g. `/usr/local/bin/quarto`).
 
@@ -153,9 +153,7 @@ A typical Quarto writing project follows four steps: **gather** your bibliograph
 
 ![Four-step Quarto writing workflow: gather bibliography, data and figures; write one .qmd in Obsidian; render with Quarto; share as PDF, Word, HTML or slides](assets/academic-writing.png)
 
-Source: [assets/academic-writing.mmd](assets/academic-writing.mmd).
-
-For academic writing with Quarto, the [quarto-academic-typst](https://github.com/kazuyanagimoto/quarto-academic-typst) extension is a good starting point — a Typst-based template for papers and preprints with clean typography, author/affiliation blocks, and BibTeX citation support. Install per-project with `quarto add kazuyanagimoto/quarto-academic-typst`, then set `format: academic-typst-pdf` in your YAML. Typst compiles much faster than LaTeX and needs no TinyTeX install. Combine with Quarto's `bibliography:` + `csl:` fields for reference management, and keep figures/data in the same vault folder so Obsidian's graph view stays useful.
+For using more fancy templates, check various blogposts,  [quarto-academic-typst](https://github.com/kazuyanagimoto/quarto-academic-typst) extension is one of the   good starting points — a Typst-based template for papers and preprints with clean typography, author/affiliation blocks, and BibTeX citation support. Install per-project with `quarto add kazuyanagimoto/quarto-academic-typst`, then set `format: academic-typst-pdf` in your YAML. Typst compiles much faster than LaTeX and needs no TinyTeX install. Combine with Quarto's `bibliography:` + `csl:` fields for reference management, and keep figures/data in the same vault folder so Obsidian's graph view stays useful.
 
 > [!note] Picking the Python / R distribution
 > **Planned for a future release:** plugin settings to point Quarto at a specific Python or R install (likely exposed as `QUARTO_PYTHON` / `QUARTO_R` env vars injected at compile time). Until then the plugin shells out to whatever `quarto` finds on `PATH`.
