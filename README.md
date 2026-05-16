@@ -2,7 +2,7 @@
 
 A plugin for [Obsidian](https://obsidian.md) that allows seamless editing of QMD files as if they were Markdown, plus rendering and live preview of `.qmd` files directly inside Obsidian via Quarto. `.md` files inside a Quarto project (folder with `_quarto.yml`) can also be rendered and previewed — opt-in via settings.
 
-QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. They work in editors like RStudio and VSCode. Quarto suits academic work especially well because one `.qmd` can render a journal-ready PDF, a `.docx`, or an HTML version of the same manuscript. A separate `.qmd` (typically reusing the same bibliography and figures) drives the talk as PDF or reveal.js slides — manuscript and presentation stay in their own files, not one document juggling both formats. Citations use pandoc's `citeproc` against a `.bib` file — Zotero (with [Better BibTeX](https://retorque.re/zotero-better-bibtex/) for auto-export) plus Obsidian plugins like [Citations](https://github.com/hans/obsidian-citation-plugin) or [Pandoc Reference List](https://github.com/mgmeyers/obsidian-pandoc-reference-list) let you insert `@key` references while drafting in the vault. On top of that Quarto gives cross-references, equations, and reproducible Python/R analyses in the same document. See [Quarto in academia](#quarto-in-academia) below for a workflow sketch and pointers to the official docs.
+QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. They work in editors like RStudio and VSCode.
 
 This plugin requires Quarto to be installed locally and reachable on your shell `PATH`; if it is not auto-discovered, set its full path in **Settings → qmd as md → Quarto path** (e.g. `/usr/local/bin/quarto`).
 
@@ -23,6 +23,10 @@ This plugin requires Quarto to be installed locally and reachable on your shell 
 In short: The diagram below sketches the three things you do with a `.qmd` file in the vault — **edit**, **preview**, **render**. Editing happens in Obsidian's standard Markdown editor. **Toggle Quarto preview** spawns a live `quarto preview` server that re-renders on save; depending on the output format and the **Open Quarto preview in Obsidian** setting, it lands in the native PDF viewer, the Web viewer split, or your external browser. **Render** runs a one-shot `quarto render`, drops the PDF next to the source, and (with the **Open Compiled PDF in Obsidian** setting on) opens it in a right split. The sections below cover each path in detail.
 
 ![Plugin workflow: edit, preview, and render paths from a .qmd file in the vault to output targets inside Obsidian or the external browser](assets/workflow.png)
+
+**Quarto for academics**
+
+Quarto suits academic work especially well because one `.qmd` can render a journal-ready PDF, a `.docx`, or an HTML version of the same manuscript. A separate `.qmd` (typically reusing the same bibliography and figures) drives the talk as PDF or reveal.js slides — manuscript and presentation stay in their own files, not one document juggling both formats. Citations use pandoc's `citeproc` against a `.bib` file — Zotero (with [Better BibTeX](https://retorque.re/zotero-better-bibtex/) for auto-export) plus Obsidian plugins like [Citations](https://github.com/hans/obsidian-citation-plugin) or [Pandoc Reference List](https://github.com/mgmeyers/obsidian-pandoc-reference-list) let you insert `@key` references while drafting in the vault. On top of that Quarto gives cross-references, equations, and reproducible Python/R analyses in the same document. See [Quarto in academia](#quarto-in-academia) below for a workflow sketch and pointers to the official docs.
 
 ### Editing QMD files
 
