@@ -73,8 +73,9 @@ function makeLineProcessor(handle: (line: string) => void): LineProcessor {
   return proc;
 }
 
+const ANSI_ESCAPE_RE = new RegExp(String.fromCharCode(27) + '\\[[0-?]*[ -/]*[@-~]', 'g');
 function stripAnsiCodes(text: string): string {
-  return text.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
+  return text.replace(ANSI_ESCAPE_RE, '');
 }
 
 function previewUrlFromLine(line: string): string | null {
@@ -907,7 +908,7 @@ export default class QmdAsMdPlugin extends Plugin {
     while (Date.now() - start < timeoutMs) {
       const f = this.app.vault.getAbstractFileByPath(vaultPath);
       if (f instanceof TFile) return f;
-      await new Promise((r) => activeWindow.setTimeout(r, 200));
+      await new Promise((r) => window.setTimeout(r, 200));
     }
     return null;
   }

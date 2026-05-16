@@ -82,8 +82,8 @@
   box-shadow: inset 0 0 0 2px var(--interactive-accent);
 }
 
-.qmd-code-view .cm-selectionBackground {
-  background: var(--text-selection) !important;
+.qmd-code-view.qmd-code-view .cm-editor .cm-selectionBackground {
+  background: var(--text-selection);
 }
 
 .qmd-yaml-key {
