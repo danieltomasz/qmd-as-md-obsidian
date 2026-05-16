@@ -22,6 +22,7 @@ import {
   QmdYamlFileView,
   QmdLuaFileView,
 } from './code-view';
+import { newQmdFromPreset } from './new-file';
 
 // --- Quarto output plumbing -----------------------------------------------
 //
@@ -188,6 +189,13 @@ export default class QmdAsMdPlugin extends Plugin {
         id: 'open-quarto-outline',
         name: 'Open Quarto outline',
         callback: () => this.activateOutlineView(),
+      });
+
+      this.addCommand({
+        id: 'new-quarto-file-from-preset',
+        name: 'New Quarto file from preset',
+        icon: 'file-plus-2',
+        callback: () => newQmdFromPreset(this.app),
       });
 
       // Keep any open outline view in sync with the focused file and its

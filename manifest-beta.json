@@ -1,6 +1,6 @@
 {
   "id": "qmd-as-md-obsidian",
-  "version": "0.3.4-rc.1",
+  "version": "0.4.0-rc.1",
   "description": "View, edit, preview and render Quarto (.qmd) files. Quarto combines Markdown with executable code cells.",
   "name": "qmd as md",
   "author": "Daniel Borek",
