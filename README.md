@@ -2,7 +2,9 @@
 
 A plugin for [Obsidian](https://obsidian.md) that allows seamless editing of QMD files as if they were Markdown, plus rendering and live preview of `.qmd` files directly inside Obsidian via Quarto. `.md` files inside a Quarto project (folder with `_quarto.yml`) can also be rendered and previewed — opt-in via settings.
 
-QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. They work in editors like RStudio and VSCode. Quarto suits academic work especially well because one `.qmd` can render a journal-ready PDF, a `.docx`, or an HTML version of the same manuscript. A separate `.qmd` (typically reusing the same bibliography and figures) drives the talk as PDF or reveal.js slides — manuscript and presentation stay in their own files, not one document juggling both formats. Citations use pandoc's `citeproc` against a `.bib` file — Zotero (with [Better BibTeX](https://retorque.re/zotero-better-bibtex/) for auto-export) plus Obsidian plugins like [Citations](https://github.com/hans/obsidian-citation-plugin) or [Pandoc Reference List](https://github.com/mgmeyers/obsidian-pandoc-reference-list) let you insert `@key` references while drafting in the vault. On top of that Quarto gives cross-references, equations, and reproducible Python/R analyses in the same document.
+QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. They work in editors like RStudio and VSCode. Quarto suits academic work especially well because one `.qmd` can render a journal-ready PDF, a `.docx`, or an HTML version of the same manuscript. A separate `.qmd` (typically reusing the same bibliography and figures) drives the talk as PDF or reveal.js slides — manuscript and presentation stay in their own files, not one document juggling both formats. Citations use pandoc's `citeproc` against a `.bib` file — Zotero (with [Better BibTeX](https://retorque.re/zotero-better-bibtex/) for auto-export) plus Obsidian plugins like [Citations](https://github.com/hans/obsidian-citation-plugin) or [Pandoc Reference List](https://github.com/mgmeyers/obsidian-pandoc-reference-list) let you insert `@key` references while drafting in the vault. On top of that Quarto gives cross-references, equations, and reproducible Python/R analyses in the same document. See [Quarto in academia](#quarto-in-academia) below for a workflow sketch and pointers to the official docs.
+
+This plugin requires Quarto to be installed locally and reachable on your shell `PATH`; if it is not auto-discovered, set its full path in **Settings → qmd as md → Quarto path** (e.g. `/usr/local/bin/quarto`).
 
 ## Features
 
@@ -142,6 +144,12 @@ renders as a proper Quarto callout (`note`/`tip`/`warning`/`caution`/`important`
 [callouts-filter]: https://gist.github.com/danieltomasz/31d298aca2969adaf60d8841b68005e2
 
 ## Quarto in academia
+
+A typical Quarto writing project follows four steps: **gather** your bibliography (e.g. exported from Zotero), data and figures; **write** a single `.qmd` in your Obsidian vault; **render** it with Quarto; and **share** the result as PDF, Word, HTML, or — from a separate `.qmd` — slides. Quarto's own [Get Started](https://quarto.org/docs/get-started/) and [authoring guide](https://quarto.org/docs/authoring/markdown-basics.html) cover the syntax in depth; see also the [citations](https://quarto.org/docs/authoring/citations.html) and [cross-references](https://quarto.org/docs/authoring/cross-references.html) pages.
+
+![Four-step Quarto writing workflow: gather bibliography, data and figures; write one .qmd in Obsidian; render with Quarto; share as PDF, Word, HTML or slides](assets/academic-writing.png)
+
+Source: [assets/academic-writing.mmd](assets/academic-writing.mmd).
 
 For academic writing with Quarto, the [quarto-academic-typst](https://github.com/kazuyanagimoto/quarto-academic-typst) extension is a good starting point — a Typst-based template for papers and preprints with clean typography, author/affiliation blocks, and BibTeX citation support. Install per-project with `quarto add kazuyanagimoto/quarto-academic-typst`, then set `format: academic-typst-pdf` in your YAML. Typst compiles much faster than LaTeX and needs no TinyTeX install. Combine with Quarto's `bibliography:` + `csl:` fields for reference management, and keep figures/data in the same vault folder so Obsidian's graph view stays useful.
 

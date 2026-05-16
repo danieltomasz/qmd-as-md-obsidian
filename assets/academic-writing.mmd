@@ -1,0 +1,5 @@
+flowchart LR
+    GATHER["1. Gather<br/>bibliography, data,<br/>figures"] --> WRITE
+    WRITE["2. Write<br/>one .qmd file<br/>in Obsidian"] --> RENDER
+    RENDER["3. Render<br/>with Quarto"] --> OUT["4. Share<br/>PDF · Word · HTML"]
+    RENDER --> SLIDES["Slides<br/>(separate .qmd)"]
