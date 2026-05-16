@@ -22,6 +22,7 @@ import {
   QmdYamlFileView,
   QmdLuaFileView,
 } from './code-view';
+import { newQmdFromPreset } from './new-file';
 
 // --- Quarto output plumbing -----------------------------------------------
 //
@@ -93,6 +94,7 @@ interface QmdPluginSettings {
   showYamlFiles: boolean;
   showLuaFiles: boolean;
   showOutline: boolean;
+  templatesFolder: string;
 }
 
 type PreviewMode = 'obsidian' | 'external';
@@ -112,6 +114,7 @@ const DEFAULT_SETTINGS: QmdPluginSettings = {
   showYamlFiles: false,
   showLuaFiles: false,
   showOutline: false,
+  templatesFolder: '',
 };
 
 export default class QmdAsMdPlugin extends Plugin {
@@ -188,6 +191,13 @@ export default class QmdAsMdPlugin extends Plugin {
         id: 'open-quarto-outline',
         name: 'Open Quarto outline',
         callback: () => this.activateOutlineView(),
+      });
+
+      this.addCommand({
+        id: 'new-quarto-file-from-preset',
+        name: 'New Quarto file from preset',
+        icon: 'file-plus-2',
+        callback: () => newQmdFromPreset(this.app, this.settings.templatesFolder),
       });
 
       // Keep any open outline view in sync with the focused file and its
@@ -935,6 +945,24 @@ class QmdSettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.quartoPath)
           .onChange(async (value) => {
             this.plugin.settings.quartoPath = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Templates folder')
+      .setDesc(
+        'Vault folder containing your own .qmd template files for "New Quarto file from preset". ' +
+          'Each .qmd in this folder (top level only — subfolders are ignored) becomes a preset; ' +
+          'the file name is used as the preset name and the file contents are inserted verbatim. ' +
+          'Leave empty to show only the built-in presets.'
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder('e.g. _quarto-templates')
+          .setValue(this.plugin.settings.templatesFolder)
+          .onChange(async (value) => {
+            this.plugin.settings.templatesFolder = value;
             await this.plugin.saveSettings();
           })
       );
