@@ -9,6 +9,7 @@ This plugin requires Quarto to be installed locally and reachable on your shell 
 ## Features
 
 - View and edit `.qmd` files using Obsidian's standard Markdown editor.
+- **Create a new `.qmd` from a built-in preset** (empty, Word `.docx`, or modern Typst PDF) via the command palette. *(Since 0.4.)*
 - Run Quarto preview on the current file, shown inside Obsidian or in your browser.
 - Render to PDF and (optionally) open the result inside Obsidian.
 - A sidebar **outline** of the active `.qmd` file's headings — Obsidian's core Outline panel cannot read `.qmd` files.
@@ -33,6 +34,12 @@ Quarto suits academic work especially well because one `.qmd` can render a journ
 Once installed, `.qmd` files open in Obsidian's Markdown editor automatically.
 
 To enable linking with Quarto files, ensure the **"Detect all file extensions"** toggle is activated in the `Files & Links` section of Obsidian settings.
+
+### Creating a new QMD file
+
+*(Since 0.4.)*
+
+Run **New Quarto file from preset** in the command palette. Pick one of the built-in presets — *Empty*, *Word (.docx)*, or *Typst PDF (modern)* — then enter a filename. The file is created in the active folder (or vault root if none is active), opens immediately, and never overwrites existing files (collisions get a `-1`, `-2`, … suffix). An editable preset list in settings is planned for a follow-up release.
 
 ### Quarto preview
 

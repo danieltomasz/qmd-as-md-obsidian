@@ -2,6 +2,18 @@
 
 All notable changes to **qmd as md** are documented here. Pre-release versions (`-rc.x`, `-beta.x`) are distributed only via [BRAT](https://github.com/TfTHacker/obsidian42-brat); stable releases go to the Obsidian community plugin store.
 
+## 0.4.0
+
+### Added
+
+- **New Quarto file from preset.** Command palette entry that creates a
+  fresh `.qmd` in the active folder from one of three built-in presets:
+  *Empty* (minimal front-matter), *Word (.docx)* (TOC + numbered
+  sections), and *Typst PDF (modern)* (A4, 2 cm margins, numbered
+  sections, TOC). Picker uses a fuzzy modal; filename prompt enforces
+  `.qmd` and avoids overwriting existing files by appending `-1`, `-2`, …
+  Editable preset list in settings is planned for a follow-up release.
+
 ## 0.3.3
 
 ### Internal
