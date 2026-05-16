@@ -19,6 +19,44 @@ export interface NewFilePreset {
   source: PresetSource;
 }
 
+// Shared Typst styling injected into both built-in Typst presets via
+// `include-in-header`. Kept as one constant so the two presets cannot drift
+// out of sync. Indentation matches the YAML position where it is interpolated
+// (10 spaces, sitting inside `    include-in-header:` → `      - text: |`).
+const TYPST_STYLING_HEADER = `    include-in-header:
+      - text: |
+          // Single accent color used throughout
+          #let accent = rgb("#2E5C8A")
+
+          // Page header: current top-level section + page number
+          #set page(header: context {
+            let heads = query(selector(heading.where(level: 1)).before(here()))
+            let t = if heads.len() > 0 { heads.last().body } else [ ]
+            text(size: 9pt, fill: gray, [#t #h(1fr) #counter(page).display()])
+          })
+          // Link color
+          #show link: set text(fill: accent)
+          // Boxed code blocks
+          #show raw.where(block: true): it => block(
+            fill: rgb("#f5f5f5"),
+            inset: 10pt,
+            radius: 4pt,
+            width: 100%,
+            it,
+          )
+          // Block quotes: colored left bar + muted italic
+          #show quote.where(block: true): it => block(
+            stroke: (left: 3pt + accent),
+            inset: (left: 12pt, top: 4pt, bottom: 4pt),
+            text(style: "italic", fill: gray.darken(20%), it.body),
+          )
+          // H1 headings: subtle accent rule
+          #show heading.where(level: 1): it => [
+            #it
+            #v(-0.5em)
+            #line(length: 100%, stroke: 0.5pt + accent.lighten(40%))
+          ]`;
+
 // Built-in presets. v0: hard-coded; later versions will let users edit/add
 // these in plugin settings (same shape, persisted in QmdPluginSettings).
 export const DEFAULT_PRESETS: NewFilePreset[] = [
@@ -77,39 +115,7 @@ format:
     # mainfont: "Libertinus Serif"
     # sansfont: "Libertinus Sans"
     # monofont: "JetBrains Mono"
-    include-in-header:
-      - text: |
-          // Single accent color used throughout
-          #let accent = rgb("#2E5C8A")
-
-          // Page header: current top-level section + page number
-          #set page(header: context {
-            let heads = query(selector(heading.where(level: 1)).before(here()))
-            let t = if heads.len() > 0 { heads.last().body } else [ ]
-            text(size: 9pt, fill: gray, [#t #h(1fr) #counter(page).display()])
-          })
-          // Link color
-          #show link: set text(fill: accent)
-          // Boxed code blocks
-          #show raw.where(block: true): it => block(
-            fill: rgb("#f5f5f5"),
-            inset: 10pt,
-            radius: 4pt,
-            width: 100%,
-            it,
-          )
-          // Block quotes: colored left bar + muted italic
-          #show quote.where(block: true): it => block(
-            stroke: (left: 3pt + accent),
-            inset: (left: 12pt, top: 4pt, bottom: 4pt),
-            text(style: "italic", fill: gray.darken(20%), it.body),
-          )
-          // H1 headings: subtle accent rule
-          #show heading.where(level: 1): it => [
-            #it
-            #v(-0.5em)
-            #line(length: 100%, stroke: 0.5pt + accent.lighten(40%))
-          ]
+${TYPST_STYLING_HEADER}
 ---
 
 # Untitled
@@ -145,39 +151,7 @@ format:
     # mainfont: "Libertinus Serif"
     # sansfont: "Libertinus Sans"
     # monofont: "JetBrains Mono"
-    include-in-header:
-      - text: |
-          // Single accent color used throughout
-          #let accent = rgb("#2E5C8A")
-
-          // Page header: current top-level section + page number
-          #set page(header: context {
-            let heads = query(selector(heading.where(level: 1)).before(here()))
-            let t = if heads.len() > 0 { heads.last().body } else [ ]
-            text(size: 9pt, fill: gray, [#t #h(1fr) #counter(page).display()])
-          })
-          // Link color
-          #show link: set text(fill: accent)
-          // Boxed code blocks
-          #show raw.where(block: true): it => block(
-            fill: rgb("#f5f5f5"),
-            inset: 10pt,
-            radius: 4pt,
-            width: 100%,
-            it,
-          )
-          // Block quotes: colored left bar + muted italic
-          #show quote.where(block: true): it => block(
-            stroke: (left: 3pt + accent),
-            inset: (left: 12pt, top: 4pt, bottom: 4pt),
-            text(style: "italic", fill: gray.darken(20%), it.body),
-          )
-          // H1 headings: subtle accent rule
-          #show heading.where(level: 1): it => [
-            #it
-            #v(-0.5em)
-            #line(length: 100%, stroke: 0.5pt + accent.lighten(40%))
-          ]
+${TYPST_STYLING_HEADER}
 ---
 
 # Untitled

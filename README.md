@@ -245,7 +245,7 @@ div[data-path$='.json'] {
 - [x] Show an outline of `.qmd` headings. *(Shipped in 0.2.0 — toggle in settings.)*
 - [ ] Recognize `{language}` for code block syntax highlighting.
 - [ ] Add CSS support for callout blocks.
-- [ ] Enable the creation of new QMD files.
+- [x] Enable the creation of new QMD files.
 - [ ] Resolve headings from `{{< include >}}` files in the outline.
 - [x] Add a render command. *(Shipped in 0.1.0.)*
 
