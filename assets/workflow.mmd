@@ -1,0 +1,12 @@
+flowchart LR
+    A[.qmd file in vault] --> B{Action?}
+    B -->|Edit| C[Obsidian Markdown editor]
+    B -->|Preview| D[Toggle Quarto preview]
+    B -->|Render| E[Render command]
+    D --> F[Live HTTP server]
+    F --> G[PDF: native PDF viewer split]
+    F --> H[HTML: Web viewer split]
+    F --> I[External browser]
+    E --> J[quarto render]
+    J --> K[PDF next to source]
+    K --> L[Auto-open in Obsidian split]

@@ -58,6 +58,9 @@ help:
 	@echo "  build           Install build deps (~40 pkgs), build main.js, then zip."
 	@echo "  lint            Install all deps (~340 pkgs, incl. eslint) and lint src/."
 	@echo "  zip             Bundle main.js + manifest.json + styles.css into qmd-as-md.zip."
+	@echo "  diagrams        Render assets/*.mmd -> assets/*.png via mermaid-cli."
+	@echo "                  Installs @mermaid-js/mermaid-cli + puppeteer into"
+	@echo "                  .cache/mmdc/ on first run; reuses on later runs."
 	@echo "  clean           Remove node_modules, build artefacts, release-local/."
 	@echo "  release-local   Build into release-local/$(PLUGIN_ID)/ (manifest-beta.json"
 	@echo "                  by default; STABLE=1 to use manifest.json). Folder is"
@@ -132,6 +135,40 @@ release-local:
 	echo "  Copy to a vault with:"; \
 	echo "    cp -R release-local/$(PLUGIN_ID) /path/to/vault/.obsidian/plugins/"
 
+# --- Diagrams --------------------------------------------------------------
+# Renders every assets/*.mmd into a sibling assets/*.png using
+# @mermaid-js/mermaid-cli (`mmdc`). The CLI needs puppeteer as a peer
+# dep, so both are installed together. To keep the repo's own
+# node_modules unaffected, the tool lives in .cache/mmdc/ — created on
+# first run, reused after, and wiped by `make clean` (.cache is in the
+# clean pattern). No global install required.
+
+MMDC_DIR := .cache/mmdc
+MMDC_BIN := $(MMDC_DIR)/node_modules/.bin/mmdc
+MMD_SRC  := $(wildcard assets/*.mmd)
+MMD_PNG  := $(MMD_SRC:.mmd=.png)
+
+$(MMDC_BIN):
+	@set -e; \
+	echo "→ Installing @mermaid-js/mermaid-cli + puppeteer into $(MMDC_DIR)/ ..."; \
+	mkdir -p $(MMDC_DIR); \
+	cd $(MMDC_DIR); \
+	[ -f package.json ] || npm init -y >/dev/null; \
+	npm install --no-audit --no-fund @mermaid-js/mermaid-cli puppeteer
+
+assets/%.png: assets/%.mmd $(MMDC_BIN)
+	@set -e; \
+	echo "→ Rendering $< -> $@"; \
+	$(MMDC_BIN) -i $< -o $@ -b white -w 1600
+
+diagrams: $(MMD_PNG)
+	@set -e; \
+	if [ -z "$(MMD_SRC)" ]; then \
+		echo "No assets/*.mmd files found."; \
+	else \
+		echo "✓ Rendered: $(MMD_PNG)"; \
+	fi
+
 # --- Public releases -------------------------------------------------------
 # Releases are built and published by .github/workflows/release.yml, which
 # fires on a pushed tag. A prerelease-style tag (one containing a hyphen,
@@ -192,4 +229,4 @@ tag-stable:
 	git push origin "$$VERSION"; \
 	echo "✓ Pushed tag $$VERSION. release.yml will publish the release."
 
-.PHONY: help zip clean build lint release-local sync-version tag-beta tag-stable
+.PHONY: help zip clean build lint diagrams release-local sync-version tag-beta tag-stable

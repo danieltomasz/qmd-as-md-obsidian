@@ -20,6 +20,10 @@ This plugin originated in 2022 as a minimal change to a now-archived project by 
 
 ## Usage
 
+In short: The diagram below sketches the three things you do with a `.qmd` file in the vault — **edit**, **preview**, **render**. Editing happens in Obsidian's standard Markdown editor. **Toggle Quarto preview** spawns a live `quarto preview` server that re-renders on save; depending on the output format and the **Open Quarto preview in Obsidian** setting, it lands in the native PDF viewer, the Web viewer split, or your external browser. **Render** runs a one-shot `quarto render`, drops the PDF next to the source, and (with the **Open Compiled PDF in Obsidian** setting on) opens it in a right split. The sections below cover each path in detail.
+
+![Plugin workflow: edit, preview, and render paths from a .qmd file in the vault to output targets inside Obsidian or the external browser](assets/workflow.png)
+
 ### Editing QMD files
 
 Once installed, `.qmd` files open in Obsidian's Markdown editor automatically.
