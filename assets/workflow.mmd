@@ -1,12 +1,14 @@
 flowchart LR
-    A[.qmd file in vault] --> B{Action?}
+    A[.qmd in vault] --> B{Action}
     B -->|Edit| C[Obsidian Markdown editor]
-    B -->|Preview| D[Toggle Quarto preview]
-    B -->|Render| E[Render command]
-    D --> F[Live HTTP server]
-    F --> G[PDF: native PDF viewer split]
-    F --> H[HTML: Web viewer split]
-    F --> I[External browser]
-    E --> J[quarto render]
-    J --> K[PDF next to source]
-    K --> L[Auto-open in Obsidian split]
+    B -->|Toggle Quarto preview| D{Open preview in Obsidian?}
+    B -->|Render| E[quarto render]
+
+    D -->|On| F{Output format}
+    D -->|Off| G[External browser]
+    F -->|PDF| H[Native PDF viewer split<br/>refreshes on save]
+    F -->|HTML / other| I[Web viewer split<br/>requires core plugin]
+    I -. core plugin disabled .-> G
+
+    E --> J[PDF next to source]
+    J --> K[Auto-open in split<br/>if setting on]
