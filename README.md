@@ -2,7 +2,7 @@
 
 A plugin for [Obsidian](https://obsidian.md) that allows seamless editing of QMD files as if they were Markdown, plus rendering and live preview of `.qmd` files directly inside Obsidian via Quarto. `.md` files inside a Quarto project (folder with `_quarto.yml`) can also be rendered and previewed — opt-in via settings.
 
-QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. These files are compatible with editors like RStudio and VSCode.
+QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. They work in editors like RStudio and VSCode. Quarto suits academic work especially well because one `.qmd` can render a journal-ready PDF, a `.docx`, or an HTML version of the same manuscript. A separate `.qmd` (typically reusing the same bibliography and figures) drives the talk as PDF or reveal.js slides — manuscript and presentation stay in their own files, not one document juggling both formats. Citations use pandoc's `citeproc` against a `.bib` file — Zotero (with [Better BibTeX](https://retorque.re/zotero-better-bibtex/) for auto-export) plus Obsidian plugins like [Citations](https://github.com/hans/obsidian-citation-plugin) or [Pandoc Reference List](https://github.com/mgmeyers/obsidian-pandoc-reference-list) let you insert `@key` references while drafting in the vault. On top of that Quarto gives cross-references, equations, and reproducible Python/R analyses in the same document.
 
 ## Features
 
@@ -140,6 +140,19 @@ Now a callout written in Obsidian:
 renders as a proper Quarto callout (`note`/`tip`/`warning`/`caution`/`important`, with title and `-`/`+` fold state) in HTML, PDF, and other formats. Requires Quarto ≥ 1.3.
 
 [callouts-filter]: https://gist.github.com/danieltomasz/31d298aca2969adaf60d8841b68005e2
+
+## Quarto in academia
+
+For academic writing with Quarto, the [quarto-academic-typst](https://github.com/kazuyanagimoto/quarto-academic-typst) extension is a good starting point — a Typst-based template for papers and preprints with clean typography, author/affiliation blocks, and BibTeX citation support. Install per-project with `quarto add kazuyanagimoto/quarto-academic-typst`, then set `format: academic-typst-pdf` in your YAML. Typst compiles much faster than LaTeX and needs no TinyTeX install. Combine with Quarto's `bibliography:` + `csl:` fields for reference management, and keep figures/data in the same vault folder so Obsidian's graph view stays useful.
+
+> [!note] Picking the Python / R distribution
+> **Planned for a future release:** plugin settings to point Quarto at a specific Python or R install (likely exposed as `QUARTO_PYTHON` / `QUARTO_R` env vars injected at compile time). Until then the plugin shells out to whatever `quarto` finds on `PATH`.
+>
+> **Python (jupyter engine):** register the env as a Jupyter kernel (`python -m ipykernel install --user --name myenv`) and pin it in YAML with `jupyter: myenv`. Alternatively set `QUARTO_PYTHON` in your shell before launching Obsidian.
+>
+> **R (knitr engine):** no YAML field selects the R binary — set `QUARTO_R=/path/to/Rscript` (or fix `PATH`) before launching Obsidian.
+>
+> Verified against Quarto 1.9.
 
 ## Alternatives
 
