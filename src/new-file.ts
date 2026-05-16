@@ -9,11 +9,14 @@ import {
   normalizePath,
 } from 'obsidian';
 
+type PresetSource = 'built-in' | 'user';
+
 export interface NewFilePreset {
   id: string;
   name: string;
   description: string;
   body: string;
+  source: PresetSource;
 }
 
 // Built-in presets. v0: hard-coded; later versions will let users edit/add
@@ -23,6 +26,7 @@ export const DEFAULT_PRESETS: NewFilePreset[] = [
     id: 'empty',
     name: 'Empty',
     description: 'Minimal front-matter, no format specified.',
+    source: 'built-in',
     body: `---
 title: ""
 ---
@@ -34,6 +38,7 @@ title: ""
     id: 'docx',
     name: 'Word (.docx)',
     description: 'format: docx with table of contents and numbered sections.',
+    source: 'built-in',
     body: `---
 title: ""
 author: ""
@@ -49,22 +54,130 @@ format:
 `,
   },
   {
-    id: 'typst',
-    name: 'Typst PDF (modern)',
-    description: 'format: typst with A4, 2 cm margins, numbered sections, TOC.',
+    id: 'typst-notes',
+    name: 'Typst PDF — Notes (Eisvogel-style)',
+    description:
+      'Eisvogel-inspired Typst PDF: TOC, numbered sections, page header, boxed code.',
+    source: 'built-in',
     body: `---
 title: ""
 author: ""
 date: today
+toc: false
+toc-depth: 2
+number-sections: true
 format:
   typst:
     papersize: a4
     margin:
       x: 2cm
-      y: 2cm
+      y: 2.5cm
     fontsize: 11pt
-    section-numbering: 1.1.a
-    toc: true
+    section-numbering: "1.1.1"
+    # mainfont: "Libertinus Serif"
+    # sansfont: "Libertinus Sans"
+    # monofont: "JetBrains Mono"
+    include-in-header:
+      - text: |
+          // Single accent color used throughout
+          #let accent = rgb("#2E5C8A")
+
+          // Page header: current top-level section + page number
+          #set page(header: context {
+            let heads = query(selector(heading.where(level: 1)).before(here()))
+            let t = if heads.len() > 0 { heads.last().body } else [ ]
+            text(size: 9pt, fill: gray, [#t #h(1fr) #counter(page).display()])
+          })
+          // Link color
+          #show link: set text(fill: accent)
+          // Boxed code blocks
+          #show raw.where(block: true): it => block(
+            fill: rgb("#f5f5f5"),
+            inset: 10pt,
+            radius: 4pt,
+            width: 100%,
+            it,
+          )
+          // Block quotes: colored left bar + muted italic
+          #show quote.where(block: true): it => block(
+            stroke: (left: 3pt + accent),
+            inset: (left: 12pt, top: 4pt, bottom: 4pt),
+            text(style: "italic", fill: gray.darken(20%), it.body),
+          )
+          // H1 headings: subtle accent rule
+          #show heading.where(level: 1): it => [
+            #it
+            #v(-0.5em)
+            #line(length: 100%, stroke: 0.5pt + accent.lighten(40%))
+          ]
+---
+
+# Untitled
+`,
+  },
+  {
+    id: 'typst-report',
+    name: 'Typst PDF — Report (Eisvogel-style)',
+    description:
+      'Eisvogel-inspired Typst report: cover metadata, TOC, numbered sections, boxed code, bibliography hints.',
+    source: 'built-in',
+    body: `---
+title: ""
+subtitle: ""
+author: ""
+date: today
+# abstract: |
+#   Short summary of the report.
+# keywords: [keyword1, keyword2]
+# bibliography: references.bib
+# csl: ieee.csl
+toc: true
+toc-depth: 3
+number-sections: true
+format:
+  typst:
+    papersize: a4
+    margin:
+      x: 2.5cm
+      y: 2.5cm
+    fontsize: 11pt
+    section-numbering: "1.1.1"
+    # mainfont: "Libertinus Serif"
+    # sansfont: "Libertinus Sans"
+    # monofont: "JetBrains Mono"
+    include-in-header:
+      - text: |
+          // Single accent color used throughout
+          #let accent = rgb("#2E5C8A")
+
+          // Page header: current top-level section + page number
+          #set page(header: context {
+            let heads = query(selector(heading.where(level: 1)).before(here()))
+            let t = if heads.len() > 0 { heads.last().body } else [ ]
+            text(size: 9pt, fill: gray, [#t #h(1fr) #counter(page).display()])
+          })
+          // Link color
+          #show link: set text(fill: accent)
+          // Boxed code blocks
+          #show raw.where(block: true): it => block(
+            fill: rgb("#f5f5f5"),
+            inset: 10pt,
+            radius: 4pt,
+            width: 100%,
+            it,
+          )
+          // Block quotes: colored left bar + muted italic
+          #show quote.where(block: true): it => block(
+            stroke: (left: 3pt + accent),
+            inset: (left: 12pt, top: 4pt, bottom: 4pt),
+            text(style: "italic", fill: gray.darken(20%), it.body),
+          )
+          // H1 headings: subtle accent rule
+          #show heading.where(level: 1): it => [
+            #it
+            #v(-0.5em)
+            #line(length: 100%, stroke: 0.5pt + accent.lighten(40%))
+          ]
 ---
 
 # Untitled
@@ -93,7 +206,10 @@ class PresetSuggestModal extends SuggestModal<NewFilePreset> {
   }
 
   renderSuggestion(preset: NewFilePreset, el: HTMLElement): void {
-    el.createEl('div', { text: preset.name, cls: 'qmd-preset-name' });
+    const title = preset.source === 'built-in'
+      ? `${preset.name}  (built-in)`
+      : preset.name;
+    el.createEl('div', { text: title, cls: 'qmd-preset-name' });
     el.createEl('small', { text: preset.description, cls: 'qmd-preset-desc' });
   }
 
@@ -198,14 +314,53 @@ function activeFolderPath(app: App): string {
   return '';
 }
 
-export async function newQmdFromPreset(app: App): Promise<void> {
-  const modal = new PresetSuggestModal(app, DEFAULT_PRESETS, (preset) => {
+// Read every top-level .qmd inside `folderPath` and turn each into a user
+// preset. Subfolders are skipped — keeps the picker flat and predictable.
+// Missing folder or read errors degrade silently to "no user presets"; the
+// built-ins still show up so the command never appears broken.
+async function loadUserPresets(
+  app: App,
+  folderPath: string,
+): Promise<NewFilePreset[]> {
+  const trimmed = folderPath.trim();
+  if (!trimmed) return [];
+  const folder = app.vault.getAbstractFileByPath(normalizePath(trimmed));
+  if (!(folder instanceof TFolder)) return [];
+  const out: NewFilePreset[] = [];
+  for (const child of folder.children) {
+    if (!(child instanceof TFile)) continue;
+    if (child.extension.toLowerCase() !== 'qmd') continue;
+    try {
+      const body = await app.vault.cachedRead(child);
+      out.push({
+        id: `user:${child.path}`,
+        name: child.basename,
+        description: `From ${child.path}`,
+        source: 'user',
+        body,
+      });
+    } catch (err) {
+      console.warn(`[qmd-as-md] Skipped template ${child.path}:`, err);
+    }
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
+export async function newQmdFromPreset(
+  app: App,
+  templatesFolder: string,
+): Promise<void> {
+  const userPresets = await loadUserPresets(app, templatesFolder);
+  // User presets first — they're the ones the user actively curated; built-ins
+  // fall to the bottom as fallback options.
+  const presets = [...userPresets, ...DEFAULT_PRESETS];
+
+  const modal = new PresetSuggestModal(app, presets, (preset) => {
     const folder = activeFolderPath(app);
     new FilenameModal(app, preset, folder, async (filename) => {
       try {
         const target = await buildTargetPath(app, folder, filename);
-        // Ensure parent folder exists. getActiveFile() can return a stale
-        // folder reference if the user just moved things; recreate on miss.
         const parent = target.includes('/')
           ? target.slice(0, target.lastIndexOf('/'))
           : '';

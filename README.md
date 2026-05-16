@@ -4,7 +4,7 @@ A plugin for [Obsidian](https://obsidian.md) that allows seamless editing of QMD
 
 QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. They work in editors like RStudio and VSCode and  might be compiled to target format files via pandoc. For format-specific options (PDF, HTML, DOCX, reveal.js, etc.), see the [Quarto format reference](https://quarto.org/docs/reference/).
 
-This plugin requires Quarto to be installed locally and reachable on your shell `PATH`; if it is not auto-discovered, set its full path in **Settings → qmd as md → Quarto path** (e.g. `/usr/local/bin/quarto`).
+This plugin shells out to the `quarto` CLI for all preview and render operations, so Quarto must be installed locally and reachable on your shell `PATH`; if it is not auto-discovered, set its full path in **Settings → qmd as md → Quarto path** (e.g. `/usr/local/bin/quarto`).
 
 ## Features
 
@@ -34,12 +34,6 @@ Quarto suits academic work especially well because one `.qmd` can render a journ
 Once installed, `.qmd` files open in Obsidian's Markdown editor automatically.
 
 To enable linking with Quarto files, ensure the **"Detect all file extensions"** toggle is activated in the `Files & Links` section of Obsidian settings.
-
-### Creating a new QMD file
-
-*(Since 0.4.)*
-
-Run **New Quarto file from preset** in the command palette. Pick one of the built-in presets — *Empty*, *Word (.docx)*, or *Typst PDF (modern)* — then enter a filename. The file is created in the active folder (or vault root if none is active), opens immediately, and never overwrites existing files (collisions get a `-1`, `-2`, … suffix). An editable preset list in settings is planned for a follow-up release.
 
 ### Quarto preview
 
@@ -130,6 +124,23 @@ Setting **Show YAML files** is off by default. Turn it on to make `.yml` and `.y
 *(Since 0.3.2.)*
 
 Setting **Show Lua files** is off by default. Turn it on to make `.lua` files visible and editable inside Obsidian, in a dedicated CodeMirror editor with minimal Lua syntax highlighting (comments, strings, numbers, keywords) — handy for editing Quarto/pandoc filter scripts without leaving Obsidian.
+
+### Creating a new QMD file
+
+*(Since 0.4.)*
+
+Run **New Quarto file from preset** in the command palette. Pick a preset, enter a filename, and the new `.qmd` is created in the active folder (or vault root if none is active) and opened immediately. Existing files are never overwritten — name collisions get a `-1`, `-2`, … suffix.
+
+**Built-in presets** (always available):
+
+- *Empty* — minimal front-matter, no format specified.
+- *Word (.docx)* — `format: docx` with TOC and numbered sections.
+- *Typst PDF — Notes (Eisvogel-style)* — A4, numbered sections, page header, boxed code, accent rule under H1s.
+- *Typst PDF — Report (Eisvogel-style)* — adds cover metadata, TOC, bibliography/CSL hints; same Typst styling block.
+
+**Your own templates (optional).** Set **Settings → qmd as md → Templates folder** to any folder in your vault (e.g. `_quarto-templates`). Every top-level `.qmd` file inside that folder is offered as a preset alongside the built-ins; the file name becomes the preset name, the file contents are inserted into the new file verbatim. Subfolders are ignored. Leave the setting empty (the default) to show only the built-ins.
+
+Because templates are real `.qmd` files in your vault, you edit them with Obsidian's normal editor, version-control them with the rest of your vault, and copy them between vaults like any other note. The built-ins are starting points: copy any built-in into your templates folder, tweak it, and your version takes priority in the picker.
 
 ### Obsidian callouts in Quarto output
 

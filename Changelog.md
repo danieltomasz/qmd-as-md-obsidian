@@ -6,13 +6,16 @@ All notable changes to **qmd as md** are documented here. Pre-release versions (
 
 ### Added
 
-- **New Quarto file from preset.** Command palette entry that creates a
-  fresh `.qmd` in the active folder from one of three built-in presets:
-  *Empty* (minimal front-matter), *Word (.docx)* (TOC + numbered
-  sections), and *Typst PDF (modern)* (A4, 2 cm margins, numbered
-  sections, TOC). Picker uses a fuzzy modal; filename prompt enforces
-  `.qmd` and avoids overwriting existing files by appending `-1`, `-2`, …
-  Editable preset list in settings is planned for a follow-up release.
+**New Quarto file from preset.** Command palette entry that creates a fresh `.qmd` in the active folder from a chosen preset. Built-ins shipped:
+
+- *Empty* (minimal front-matter),
+- *Word (.docx)* (TOC + numbered sections),
+- *Typst PDF — Notes (Eisvogel-style)* (A4, numbered sections, page header, boxed code, H1 accent rule),
+- *Typst PDF — Report (Eisvogel-style)* (adds cover metadata, TOC, bibliography/CSL hints; same Typst styling block).
+
+Picker uses a fuzzy modal; filename prompt enforces `.qmd` and avoids overwriting existing files by appending `-1`, `-2`, …
+
+**Templates folder setting.** Optional **Templates folder** setting points at any vault folder; every top-level `.qmd` file inside it is offered as a preset alongside the built-ins (file name = preset name, file contents inserted verbatim). Default is empty — only built-ins show. Subfolders are ignored. Templates are plain `.qmd` files, so they edit, version-control, and sync like any other note.
 
 ## 0.3.3
 
