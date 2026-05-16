@@ -4,8 +4,6 @@ A plugin for [Obsidian](https://obsidian.md) that allows seamless editing of QMD
 
 QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. These files are compatible with editors like RStudio and VSCode.
 
-This plugin originated in 2022 as a minimal change to a now-archived project by deathau: [deathau/txt-as-md-obsidian](https://github.com/deathau/txt-as-md-obsidian). It has since evolved to include additional integrations and features.
-
 ## Features
 
 - View and edit `.qmd` files using Obsidian's standard Markdown editor.
@@ -221,6 +219,8 @@ This plugin requires Obsidian **v1.8.0** or later — the in-app preview relies 
 The source code for this plugin is open and available on GitHub for audit. While I assure you that the plugin does not collect data or perform any malicious actions, installing plugins in Obsidian always involves a level of trust.
 
 ## Changelog & contributing
+
+This plugin originated in 2022 as a minimal change to a now-archived project by deathau: [deathau/txt-as-md-obsidian](https://github.com/deathau/txt-as-md-obsidian). It has since evolved to include additional integrations and features.
 
 - See [`Changelog.md`](./Changelog.md) for the full version history.
 - See [`Contributing.md`](./Contributing.md) for development setup, the `make` targets, and the release process.
