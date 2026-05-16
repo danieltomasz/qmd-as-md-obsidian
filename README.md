@@ -16,6 +16,7 @@ This plugin originated in 2022 as a minimal change to a now-archived project by 
 - Optional dedicated editor for `.yml` / `.yaml` files, with Quarto-oriented YAML syntax highlighting.
 - Optional dedicated editor for `.lua` files with minimal syntax highlighting — handy for Quarto/pandoc filter scripts.
 - Quarto errors surface as Obsidian notices, not just in the developer console.
+- [Obsidian callouts rendered as native Quarto callouts](#obsidian-callouts-in-quarto-output) via a small pandoc Lua filter.
 
 ## Usage
 
