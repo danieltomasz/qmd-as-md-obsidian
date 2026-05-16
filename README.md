@@ -1,6 +1,6 @@
 # qmd as md
 
-A plugin for [Obsidian](https://obsidian.md) that allows seamless editing of QMD files as if they were Markdown.
+A plugin for [Obsidian](https://obsidian.md) that allows seamless editing of QMD files as if they were Markdown, plus rendering and live preview of `.qmd` files directly inside Obsidian via Quarto. `.md` files inside a Quarto project (folder with `_quarto.yml`) can also be rendered and previewed — opt-in via settings.
 
 QMD files combine Markdown with executable code cells and are supported by [Quarto](https://quarto.org/), an open-source publishing system. These files are compatible with editors like RStudio and VSCode.
 
