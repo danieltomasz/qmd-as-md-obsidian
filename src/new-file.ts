@@ -251,7 +251,16 @@ class FilenameModal extends Modal {
         text.inputEl.focus();
         text.inputEl.select();
         text.inputEl.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
+          // Skip during IME composition (Japanese/Chinese/Korean input),
+          // and let modifier combos pass through to the OS / Obsidian.
+          if (
+            e.key === 'Enter' &&
+            !e.isComposing &&
+            !e.shiftKey &&
+            !e.metaKey &&
+            !e.ctrlKey &&
+            !e.altKey
+          ) {
             e.preventDefault();
             this.submit();
           }
@@ -281,10 +290,18 @@ class FilenameModal extends Modal {
   }
 }
 
-// Strip path separators and trailing ".qmd"; callers add the extension back.
+// Sanitize a user-typed base filename so vault.create can't choke and the
+// result still works after syncing to Windows / macOS / Linux:
+//   - strip a trailing ".qmd" (case-insensitive); caller re-adds it
+//   - replace path separators with "-"
+//   - drop characters Windows forbids in filenames: : * ? " < > |
+//   - trim leading/trailing whitespace and dots (Windows strips them anyway,
+//     and a leading "." would make the file hidden on POSIX)
 function sanitizeBaseName(input: string): string {
-  const noSlashes = input.replace(/[\\/]/g, '-').trim();
-  return noSlashes.replace(/\.qmd$/i, '');
+  const withoutExt = input.replace(/\.qmd$/i, '');
+  const noSlashes = withoutExt.replace(/[\\/]/g, '-');
+  const noReserved = noSlashes.replace(/[:*?"<>|]/g, '');
+  return noReserved.replace(/^[\s.]+|[\s.]+$/g, '');
 }
 
 // Pick a target path next to the active file, falling back to vault root.
@@ -364,8 +381,20 @@ export async function newQmdFromPreset(
         const parent = target.includes('/')
           ? target.slice(0, target.lastIndexOf('/'))
           : '';
-        if (parent && !(app.vault.getAbstractFileByPath(parent) instanceof TFolder)) {
-          await app.vault.createFolder(parent);
+        if (parent) {
+          const existing = app.vault.getAbstractFileByPath(parent);
+          if (existing instanceof TFile) {
+            // A file already occupies the would-be parent folder path —
+            // createFolder would surface a confusing low-level error; bail
+            // with a precise message instead.
+            new Notice(
+              `Cannot create folder "${parent}": a file with that name already exists.`,
+            );
+            return;
+          }
+          if (!(existing instanceof TFolder)) {
+            await app.vault.createFolder(parent);
+          }
         }
         const file = await app.vault.create(target, preset.body);
         if (file instanceof TFile) {
