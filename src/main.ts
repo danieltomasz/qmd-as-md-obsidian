@@ -80,8 +80,11 @@ function stripAnsiCodes(text: string): string {
 }
 
 function previewUrlFromLine(line: string): string | null {
-  const match = stripAnsiCodes(line).match(/Browse at\s+(https?:\/\/\S+)/);
-  return match?.[1] ?? null;
+  // Quarto prints human-readable URLs, leaving spaces in output filenames
+  // unescaped. Capture the entire URL to the end of the line, then encode it
+  // before handing it to Electron/the browser.
+  const match = stripAnsiCodes(line).match(/Browse at\s+(https?:\/\/.+?)\s*$/);
+  return match?.[1] ? encodeURI(match[1]) : null;
 }
 
 interface QmdPluginSettings {
@@ -332,7 +335,7 @@ export default class QmdAsMdPlugin extends Plugin {
     vaultPath: string,
     existingLeaf: WorkspaceLeaf | null
   ): Promise<WorkspaceLeaf | null> {
-    const pdfTFile = await this.waitForVaultFile(vaultPath);
+    const pdfTFile = await this.waitForVaultOutput(vaultPath);
     if (!pdfTFile) {
       new Notice(
         `Quarto preview produced ${vaultPath} but it did not appear in the vault within the timeout.`
@@ -905,7 +908,7 @@ export default class QmdAsMdPlugin extends Plugin {
               : guessedPdfPath
           );
 
-          const outputTFile = await this.waitForVaultFile(outputVaultPath);
+          const outputTFile = await this.waitForVaultOutput(outputVaultPath);
 
           if (!outputTFile) {
             new Notice(
@@ -914,13 +917,14 @@ export default class QmdAsMdPlugin extends Plugin {
             return;
           }
 
-          const isPdf = outputVaultPath.toLowerCase().endsWith('.pdf');
+          const resolvedOutputPath = outputTFile.path;
+          const isPdf = resolvedOutputPath.toLowerCase().endsWith('.pdf');
 
           if (!this.settings.openPdfInObsidian || !isPdf) {
             new Notice(
               isPdf
-                ? `PDF rendered: ${outputVaultPath}`
-                : `Rendered: ${outputVaultPath} (Obsidian's built-in viewer only handles PDFs).`
+                ? `PDF rendered: ${resolvedOutputPath}`
+                : `Rendered: ${resolvedOutputPath} (Obsidian's built-in viewer only handles PDFs).`
             );
             return;
           }
@@ -931,11 +935,11 @@ export default class QmdAsMdPlugin extends Plugin {
               : this.app.workspace.getLeaf('split', 'vertical');
             await leaf.openFile(outputTFile, { active: false });
             await this.app.workspace.revealLeaf(leaf);
-            new Notice(`Opened ${outputVaultPath}`);
+            new Notice(`Opened ${resolvedOutputPath}`);
           } catch (err) {
             console.error('Failed to open PDF in Obsidian:', err);
             new Notice(
-              `PDF rendered at ${outputVaultPath}, but Obsidian could not open it (no PDF viewer registered?).`
+              `PDF rendered at ${resolvedOutputPath}, but Obsidian could not open it (no PDF viewer registered?).`
             );
           }
         })().catch((err) => {
@@ -955,6 +959,28 @@ export default class QmdAsMdPlugin extends Plugin {
       const f = this.app.vault.getAbstractFileByPath(vaultPath);
       if (f instanceof TFile) return f;
       await new Promise((r) => window.setTimeout(r, 200));
+    }
+    return null;
+  }
+
+  // Quarto prints only the output basename. That normally means a sibling of
+  // the source, but a project may set output-dir (for example ../exports).
+  // Prefer the conventional sibling path, then locate the most recently
+  // updated vault file with the reported output name.
+  async waitForVaultOutput(vaultPath: string, timeoutMs = 5000): Promise<TFile | null> {
+    const start = Date.now();
+    const outputName = path.basename(vaultPath);
+    while (Date.now() - start < timeoutMs) {
+      const direct = this.app.vault.getAbstractFileByPath(vaultPath);
+      if (direct instanceof TFile) return direct;
+
+      const matches = this.app.vault
+        .getFiles()
+        .filter((candidate) => candidate.name === outputName)
+        .sort((a, b) => b.stat.mtime - a.stat.mtime);
+      if (matches.length > 0) return matches[0];
+
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
     }
     return null;
   }
